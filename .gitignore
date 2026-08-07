@@ -1,0 +1,9 @@
+/build/
+*.o
+*.bin
+*.map
+*.lis
+*.sym
+*.def
+*.reloc
+.DS_Store
