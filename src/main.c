@@ -2,9 +2,13 @@
 #include <string.h>
 #include <z80.h>
 
+#ifdef ROBOTS_TIMEX_HIRES
+#include "font8x8.h"
+#else
 #include "font4x8.h"
-#include "glyph_styles.h"
+#endif
 #include "robots_game.h"
+#include "robots_input.h"
 
 #define SCREEN_COLUMNS 64u
 #define SCREEN_ROWS 24u
@@ -14,15 +18,27 @@
 
 #define SCREEN_BITMAP_BYTES 6144u
 #define SCREEN_ATTRIBUTE_BYTES 768u
+#ifdef ROBOTS_TIMEX_HIRES
+#define SCREEN_BYTES (SCREEN_BITMAP_BYTES * 2u)
+#define TIMEX_SCREEN_0 ((void *)16384u)
+#define TIMEX_SCREEN_1 ((void *)24576u)
+#define TIMEX_ULA_ATTRIBUTES ((void *)22528u)
+#define TIMEX_SCLD_PORT 0xffu
+#define TIMEX_HIRES_WHITE_ON_BLACK 0x3eu
+#define TIMEX_ULA_MODE 0x00u
+#define TIMEX_ULA_WHITE_ON_BLACK 0x47u
+#else
 #define SCREEN_BYTES (SCREEN_BITMAP_BYTES + SCREEN_ATTRIBUTE_BYTES)
 #define ZX_BITMAP_BASE ((void *)16384u)
 #define ZX_ATTRIBUTE_BASE ((void *)22528u)
 #define ZX_BLACK 0u
+#define ZX_RED 2u
 #define ZX_WHITE 7u
 #define ZX_BRIGHT 64u
 
 #define ATTR(ink_, paper_) \
     ((unsigned char)(ZX_BRIGHT | (ink_) | ((paper_) << 3)))
+#endif
 
 #define ANIMATION_DELAY_MS 90u
 #define WAIT_DELAY_MS 150u
@@ -31,16 +47,14 @@ static RobotsGame game;
 static unsigned long high_score;
 
 /*
- * The complete 6912-byte display is composed off-screen.  Attributes are
- * copied first and the bitmap second, avoiding progressive redraw and the
- * CRT terminal's temporary black-ink-on-white-paper attributes.  All large
- * buffers are global so they cannot exhaust the Z80 stack.
+ * The complete display is composed off-screen.  The Spectrum build stores
+ * bitmap plus attributes; Timex hi-res stores its two interleaved display
+ * files.  All large buffers are global so they cannot exhaust the Z80 stack.
  */
 static unsigned char screen_buffer[SCREEN_BYTES];
 static unsigned char render_cells[ROBOTS_GAME_HEIGHT][ROBOTS_GAME_WIDTH];
 static unsigned char previous_cells[ROBOTS_GAME_HEIGHT][ROBOTS_GAME_WIDTH];
 static unsigned char board_visible;
-static unsigned char glyph_style;
 
 static unsigned int bitmap_offset(unsigned char x_byte,
                                   unsigned char pixel_y)
@@ -66,6 +80,11 @@ static void screen_put_glyph(unsigned char x, unsigned char y,
         offset = bitmap_offset((unsigned char)(x >> 1),
                                (unsigned char)(pixel_y + row));
         bits = glyph[row];
+#ifdef ROBOTS_TIMEX_HIRES
+        if ((x & 1u) != 0u)
+            offset = (unsigned int)(offset + SCREEN_BITMAP_BYTES);
+        screen_buffer[offset] = bits;
+#else
         if ((x & 1u) == 0u)
             screen_buffer[offset] =
                 (unsigned char)((screen_buffer[offset] & 0x0fu) |
@@ -74,6 +93,7 @@ static void screen_put_glyph(unsigned char x, unsigned char y,
             screen_buffer[offset] =
                 (unsigned char)((screen_buffer[offset] & 0xf0u) |
                                 (bits & 0x0fu));
+#endif
     }
 }
 
@@ -81,15 +101,26 @@ static void screen_put(unsigned char x, unsigned char y, unsigned char value)
 {
     const unsigned char *glyph;
 
+#ifdef ROBOTS_TIMEX_HIRES
+    if (value < ROBOTS_FONT8X8_FIRST || value >= 128u)
+        value = ' ';
+    glyph = &robots_font8x8[
+        (unsigned int)(value - ROBOTS_FONT8X8_FIRST) * 8u];
+#else
     if (value < ROBOTS_FONT_FIRST || value >= 128u)
         value = ' ';
     glyph = &robots_font4x8[(unsigned int)(value - ROBOTS_FONT_FIRST) * 8u];
+#endif
     screen_put_glyph(x, y, glyph);
 }
 
 static void screen_put_robot(unsigned char x, unsigned char y)
 {
-    screen_put_glyph(x, y, robots_glyph_style_get(glyph_style)->robot);
+#ifdef ROBOTS_TIMEX_HIRES
+    screen_put_glyph(x, y, robots_robot8x8);
+#else
+    screen_put_glyph(x, y, robots_robot4x8);
+#endif
 }
 
 static void screen_put_object(unsigned char x, unsigned char y,
@@ -147,6 +178,7 @@ static void screen_number(unsigned char x, unsigned char y,
         screen_put((unsigned char)(x + i), y, digits[i]);
 }
 
+#ifndef ROBOTS_TIMEX_HIRES
 static void fill_attributes(unsigned char attribute)
 {
     unsigned int i;
@@ -155,19 +187,69 @@ static void fill_attributes(unsigned char attribute)
         screen_buffer[SCREEN_BITMAP_BYTES + i] = attribute;
 }
 
+static void prepare_board_colours(void)
+{
+    unsigned int attribute_offset;
+    unsigned char screen_x;
+    unsigned char screen_y;
+
+    fill_attributes(ATTR(ZX_WHITE, ZX_BLACK));
+    screen_x = (unsigned char)((unsigned char)game.player.x + FIELD_LEFT);
+    screen_y = (unsigned char)((unsigned char)game.player.y + 1u);
+    attribute_offset = (unsigned int)screen_y * 32u +
+                       (unsigned int)(screen_x >> 1);
+    screen_buffer[SCREEN_BITMAP_BYTES + attribute_offset] =
+        ATTR(ZX_RED, ZX_BLACK);
+}
+#endif
+
 static void clear_screen(void)
 {
+#ifdef ROBOTS_TIMEX_HIRES
+    memset(screen_buffer, 0, SCREEN_BYTES);
+#else
     memset(screen_buffer, 0, SCREEN_BITMAP_BYTES);
     fill_attributes(ATTR(ZX_WHITE, ZX_BLACK));
+#endif
 }
 
 static void present_screen(void)
 {
+#ifdef ROBOTS_TIMEX_HIRES
+    memcpy(TIMEX_SCREEN_0, screen_buffer, SCREEN_BITMAP_BYTES);
+    memcpy(TIMEX_SCREEN_1, &screen_buffer[SCREEN_BITMAP_BYTES],
+           SCREEN_BITMAP_BYTES);
+#else
     /* Establish black paper before exposing the newly composed bitmap. */
     memcpy(ZX_ATTRIBUTE_BASE, &screen_buffer[SCREEN_BITMAP_BYTES],
            SCREEN_ATTRIBUTE_BYTES);
     memcpy(ZX_BITMAP_BASE, screen_buffer, SCREEN_BITMAP_BYTES);
+#endif
 }
+
+static void blank_live_screen(void)
+{
+#ifdef ROBOTS_TIMEX_HIRES
+    memset(TIMEX_SCREEN_0, 0, SCREEN_BITMAP_BYTES);
+    memset(TIMEX_SCREEN_1, 0, SCREEN_BITMAP_BYTES);
+    z80_outp(TIMEX_SCLD_PORT, TIMEX_HIRES_WHITE_ON_BLACK);
+#else
+    memset(ZX_ATTRIBUTE_BASE, ATTR(ZX_WHITE, ZX_BLACK),
+           SCREEN_ATTRIBUTE_BYTES);
+    memset(ZX_BITMAP_BASE, 0, SCREEN_BITMAP_BYTES);
+#endif
+}
+
+#ifdef ROBOTS_TIMEX_HIRES
+static void restore_timex_ula(void)
+{
+    /* Prepare a valid 256x192 ULA screen before changing display modes. */
+    memset(TIMEX_SCREEN_0, 0, SCREEN_BITMAP_BYTES);
+    memset(TIMEX_ULA_ATTRIBUTES, TIMEX_ULA_WHITE_ON_BLACK,
+           SCREEN_ATTRIBUTE_BYTES);
+    z80_outp(TIMEX_SCLD_PORT, TIMEX_ULA_MODE);
+}
+#endif
 
 static int read_key(void)
 {
@@ -180,6 +262,38 @@ static int read_key(void)
     } while (key == 0);
     in_wait_nokey();
     return key;
+}
+
+static const char *matrix_joystick_label(void)
+{
+    RobotsMatrixJoystick mode;
+
+    mode = robots_input_get_matrix_joystick();
+    if (mode == ROBOTS_MATRIX_JOYSTICK_CURSOR)
+        return "CURSOR";
+    if (mode == ROBOTS_MATRIX_JOYSTICK_SINCLAIR1)
+        return "SINCLAIR 1";
+    return "OFF";
+}
+
+static void cycle_matrix_joystick(void)
+{
+    RobotsMatrixJoystick mode;
+
+    mode = robots_input_get_matrix_joystick();
+    if (mode == ROBOTS_MATRIX_JOYSTICK_OFF)
+        mode = ROBOTS_MATRIX_JOYSTICK_CURSOR;
+    else if (mode == ROBOTS_MATRIX_JOYSTICK_CURSOR)
+        mode = ROBOTS_MATRIX_JOYSTICK_SINCLAIR1;
+    else
+        mode = ROBOTS_MATRIX_JOYSTICK_OFF;
+    robots_input_set_matrix_joystick(mode);
+}
+
+static void toggle_kempston(void)
+{
+    robots_input_set_kempston(
+        (unsigned char)(robots_input_get_kempston() == 0u));
 }
 
 static const char *license_page_1[24] = {
@@ -284,10 +398,11 @@ static unsigned int title_seed(void)
         if (key == 'l' || key == 'L') {
             show_license();
             show_title();
-        } else if (key == 'g' || key == 'G') {
-            glyph_style = (unsigned char)(glyph_style + 1u);
-            if (glyph_style >= ROBOTS_GLYPH_STYLE_COUNT)
-                glyph_style = ROBOTS_GLYPH_STYLE_BSD;
+        } else if (key == 'j' || key == 'J') {
+            cycle_matrix_joystick();
+            show_title();
+        } else if (key == 'k' || key == 'K') {
+            toggle_kempston();
             show_title();
         } else {
             seed ^= (unsigned int)((unsigned int)key << 8);
@@ -300,16 +415,20 @@ static unsigned int title_seed(void)
 
 static void show_title(void)
 {
-    const RobotsGlyphStyle *style;
+    const char *joystick_label;
     unsigned char x;
     unsigned char y;
     unsigned char label_end;
 
     clear_screen();
-    style = robots_glyph_style_get(glyph_style);
+    joystick_label = matrix_joystick_label();
 
-    screen_center(0u, "R O B O T S");
+    screen_center(0u, "ZX BSD ROBOTS");
+#ifdef ROBOTS_TIMEX_HIRES
+    screen_center(1u, "THE CLASSIC BSD GAME - TIMEX HI-RES 512X192");
+#else
     screen_center(1u, "THE CLASSIC BSD GAME - ZX SPECTRUM 48K");
+#endif
     screen_center(3u, "{--------------------------------------}");
     for (y = 4u; y <= 7u; ++y) {
         screen_put(12u, y, '|');
@@ -334,13 +453,19 @@ static void show_title(void)
     screen_center(16u, "T/0 TELEPORT   W RISKY WAIT   S/> SAFE WAIT");
     screen_center(17u, "CAPS+MOVE RUNS SAFELY   I HELP   Q QUIT");
 
-    screen_text(4u, 19u, "G: GLYPHS [");
-    screen_text(15u, 19u, style->label);
-    label_end = (unsigned char)(15u + text_length(style->label));
-    screen_put(label_end, 19u, ']');
-    screen_text(23u, 19u, "ENEMY");
-    screen_put_robot(29u, 19u);
-    screen_text(33u, 19u, "YOU @   HEAP *");
+    screen_text(4u, 18u, "J: MATRIX [");
+    screen_text(15u, 18u, joystick_label);
+    label_end = (unsigned char)(15u + text_length(joystick_label));
+    screen_put(label_end, 18u, ']');
+    screen_text(32u, 18u, "K: KEMPSTON [");
+    if (robots_input_get_kempston() != 0u)
+        screen_text(45u, 18u, "ON]");
+    else
+        screen_text(45u, 18u, "OFF]");
+
+    screen_text(18u, 19u, "ENEMY");
+    screen_put_robot(24u, 19u);
+    screen_text(29u, 19u, "YOU @   HEAP *");
     screen_center(20u, "L: BSD LICENSE");
     screen_center(21u, "PRESS ANY OTHER KEY TO PLAY");
     screen_center(22u, "ORIGINAL GAME BY KEN ARNOLD");
@@ -373,6 +498,7 @@ static void show_help(void)
     screen_text(2u, 17u, "W                RISKY WAIT UNTIL THE FIELD ENDS");
     screen_text(2u, 18u, "I                THIS HELP SCREEN");
     screen_text(2u, 19u, "Q                QUIT");
+    screen_text(2u, 20u, "JOYSTICK DIRECTIONS MOVE; FIRE TELEPORTS");
     screen_text(2u, 21u, "W BONUS: +1 FOR EACH ROBOT KILLED, ONLY IF YOU LIVE.");
     screen_center(22u, "PRESS SPACE TO RETURN");
     present_screen();
@@ -470,6 +596,9 @@ static void render_board(void)
             }
         }
     }
+#ifndef ROBOTS_TIMEX_HIRES
+    prepare_board_colours();
+#endif
     present_screen();
 }
 
@@ -485,6 +614,9 @@ static void modal_box(const char *title, const char *line1,
     unsigned char x;
     unsigned char y;
 
+#ifndef ROBOTS_TIMEX_HIRES
+    fill_attributes(ATTR(ZX_WHITE, ZX_BLACK));
+#endif
     for (y = 7u; y <= 16u; ++y) {
         screen_put(9u, y, '|');
         for (x = 10u; x < 54u; ++x)
@@ -629,46 +761,84 @@ static unsigned char wait_to_end(void)
     return result;
 }
 
+static RobotsInputEvent read_game_input(int *key, signed char *dx,
+                                        signed char *dy)
+{
+    RobotsInputEvent event;
+
+    for (;;) {
+        event = robots_input_poll(dx, dy);
+        if (event != ROBOTS_INPUT_NONE) {
+            *key = 0;
+            return event;
+        }
+
+        *key = in_inkey();
+        if (*key != 0 && robots_input_matrix_active() == 0u) {
+            in_wait_nokey();
+            robots_input_reset();
+            return ROBOTS_INPUT_NONE;
+        }
+        z80_delay_ms(5u);
+    }
+}
+
 static unsigned char play_game(void)
 {
     int key;
+    RobotsInputEvent input_event;
     signed char dx;
     signed char dy;
     unsigned char run;
     unsigned char result;
 
+    robots_input_reset();
     for (;;) {
         render_board();
-        key = read_key();
+        input_event = read_game_input(&key, &dx, &dy);
         result = ROBOTS_GAME_RESULT_REJECTED;
 
-        if (key == 'i' || key == 'I' || key == '?') {
-            show_help();
-            continue;
-        }
-        if (key == 'q' || key == 'Q') {
-            if (confirm_quit() != 0u)
-                return 1u;
-            continue;
-        }
-        if (key == 't' || key == 'T' || key == '0') {
+        if (input_event == ROBOTS_INPUT_TELEPORT) {
             result = robots_game_teleport(&game);
             if (result != ROBOTS_GAME_RESULT_REJECTED)
                 render_board();
-        } else if (key == 'w' || key == 'W') {
-            result = wait_to_end();
-        } else if (direction_for_key(key, &dx, &dy, &run) != 0u) {
-            if (run != 0u)
-                result = run_safely(dx, dy);
-            else {
-                result = robots_game_move(&game, dx, dy);
-                if (result == ROBOTS_GAME_RESULT_REJECTED)
-                    show_notice('!');
-                else
-                    render_board();
-            }
+        } else if (input_event == ROBOTS_INPUT_MOVE) {
+            result = robots_game_move(&game, dx, dy);
+            if (result == ROBOTS_GAME_RESULT_REJECTED)
+                show_notice('!');
+            else
+                render_board();
         } else {
-            show_notice('?');
+            if (key == 'i' || key == 'I' || key == '?') {
+                show_help();
+                robots_input_reset();
+                continue;
+            }
+            if (key == 'q' || key == 'Q') {
+                if (confirm_quit() != 0u)
+                    return 1u;
+                robots_input_reset();
+                continue;
+            }
+            if (key == 't' || key == 'T' || key == '0') {
+                result = robots_game_teleport(&game);
+                if (result != ROBOTS_GAME_RESULT_REJECTED)
+                    render_board();
+            } else if (key == 'w' || key == 'W') {
+                result = wait_to_end();
+            } else if (direction_for_key(key, &dx, &dy, &run) != 0u) {
+                if (run != 0u)
+                    result = run_safely(dx, dy);
+                else {
+                    result = robots_game_move(&game, dx, dy);
+                    if (result == ROBOTS_GAME_RESULT_REJECTED)
+                        show_notice('!');
+                    else
+                        render_board();
+                }
+            } else {
+                show_notice('?');
+            }
         }
 
         if (result == ROBOTS_GAME_RESULT_CLEARED)
@@ -682,9 +852,10 @@ int main(void)
 {
     unsigned int seed;
 
-    z80_outp(0xfeu, ZX_BLACK);
+    z80_outp(0xfeu, 0u);
+    blank_live_screen();
     high_score = 0ul;
-    glyph_style = ROBOTS_GLYPH_STYLE_ROBOT;
+    robots_input_init(ROBOTS_MATRIX_JOYSTICK_OFF);
 
     for (;;) {
         show_title();
@@ -695,9 +866,13 @@ int main(void)
             break;
     }
 
+#ifdef ROBOTS_TIMEX_HIRES
+    restore_timex_ula();
+#else
     clear_screen();
     screen_center(10u, "THANKS FOR PLAYING ROBOTS");
     screen_center(12u, "RANDOMIZE USR TO PLAY AGAIN");
     present_screen();
+#endif
     return 0;
 }

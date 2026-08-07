@@ -1,15 +1,17 @@
-# Robots ZX
+# ZX BSD Robots
 
-**Robots ZX** is a faithful ZX Spectrum 48K port of Ken Arnold's classic BSD
-terminal game `robots`.
+**ZX BSD Robots** is a faithful Sinclair ZX port of Ken Arnold's classic BSD
+terminal game `robots`. Two ready-to-load editions are included:
+
+- [dist/zx-bsd-robots-48k.tap](dist/zx-bsd-robots-48k.tap) for an unexpanded ZX
+  Spectrum 48K and compatible 128K machines;
+- [dist/zx-bsd-robots-timex-512.tap](dist/zx-bsd-robots-timex-512.tap) for the
+  TC2048, TC2068, and TS2068, using the Timex SCLD's real 512×192 hi-res mode.
 
 You have no weapon. Every robot takes one step towards you after each turn, so
 survival means making the machines collide with one another or with the junk
 heaps left by earlier collisions. Teleportation is unlimited, random, and not
 necessarily safe.
-
-The release image is [dist/robots-zx-48k.tap](dist/robots-zx-48k.tap). It runs
-on an unexpanded ZX Spectrum 48K and compatible 128K machines.
 
 ## What was preserved
 
@@ -24,16 +26,19 @@ on an unexpanded ZX Spectrum 48K and compatible 128K machines.
 - The original wait bonus: one extra point per robot destroyed after `W`, but
   only if the player survives the field.
 
-The Spectrum port keeps the historical `@`, `+`, and `*` identities in the
-game state. Its hand-drawn 4×8 font renders `@` as the player and `*` as a
-junk heap. On the title screen, `G` cycles the robot between the port's
-`ROBOT`, playful `ATARI` and `C64` variants, and `BSD`, the original plus sign.
-Only the robot changes; the player and heap stay the same. Frame corners have
-their own corner glyphs and never reuse the selected robot.
+The port keeps the historical `@`, `+`, and `*` identities in the game state.
+The logical `+` is drawn as one fixed pixel-art robot; `@` is the player and
+`*` is a junk heap. Frame corners have their own corner glyphs and never reuse
+the robot.
 
-The 64-column display fits the original arena without scaling: 61 characters
-occupy 244 of the Spectrum's 256 horizontal pixels. Every screen uses bright
-white ink on black paper.
+Both editions retain a 64-column display, so the original 61-character arena
+fits without scaling. The Spectrum version uses the hand-drawn 4×8 font and
+draws the player in bright red on black; because Spectrum colour attributes
+cover an 8×8 cell, the neighbouring 4-pixel character half shares that colour.
+The Timex version uses an 8×8 font derived from Daniel Hepper's public-domain
+[font8x8](https://github.com/dhepper/font8x8) collection. Timex hi-res has one
+screen-wide ink/paper choice, so that edition is monochrome white on black and
+distinguishes the player by shape rather than colour.
 
 ## Controls
 
@@ -48,34 +53,52 @@ white ink on black paper.
 | `W` | Risky wait until you die or the field is cleared |
 | `I` or `?` | On-machine help |
 | `Q` | Quit, with confirmation |
-| `G` | On the title screen, cycle `ROBOT` / `ATARI` / `C64` / `BSD` robot glyphs |
+| Joystick directions | One safe movement turn |
+| Joystick FIRE | Teleport |
+| `J` | On the title screen, select `OFF`, `CURSOR`, or `SINCLAIR 1` matrix mapping |
+| `K` | On the title screen, enable or disable Kempston input |
 | `L` | On the title screen, read the complete two-page BSD licence |
+
+Kempston works alongside the keyboard when enabled with `K`. It defaults off
+because port `$1F` floats on a machine without a Kempston interface and cannot
+be auto-detected reliably. Cursor and Sinclair 1 joysticks are both
+keyboard-matrix standards: Cursor uses `5/6/7/8/0`, while Sinclair 1 uses
+`6/7/8/9/0`. Because the shared contacts
+are electrically indistinguishable, only one of those two mappings can be
+active at a time; select it with `J`. `OFF` preserves the numeric-key movement
+layout exactly. Joystick input is release-triggered, so holding a direction
+cannot accidentally spend several turns.
 
 The title screen shows the complete original and numeric movement-key diagrams.
 The on-machine help explains the rules and every in-game key, while the
 two-page licence viewer keeps the complete BSD notice, conditions, and
-disclaimer available on the Spectrum itself.
+disclaimer available on the machine itself.
 
 ## Build and verification
 
 The default `make` target prints help instead of silently choosing a build.
 
 ```sh
-make spectrum-dist   # build dist/robots-zx-48k.tap
-make test            # host mechanics + TAP + 48K memory-layout gates
-make smoke-spectrum  # title/licence/game UI smoke in headless ZEsarUX
-make verify          # all of the above
-make run             # launch on a Spectrum 48K in ZEsarUX
+make spectrum-dist   # build dist/zx-bsd-robots-48k.tap
+make timex-dist      # build dist/zx-bsd-robots-timex-512.tap
+make all             # build both TAP files
+make test            # host mechanics + TAP + memory-layout gates
+make smoke-spectrum  # 48K UI smoke in headless ZEsarUX
+make smoke-timex     # 512×192 UI smoke on an emulated TC2048
+make verify          # tests and both emulator smoke tests
+make run-spectrum    # launch the 48K edition in ZEsarUX
+make run-timex       # launch the hi-res edition as a TC2048
+make run             # alias for make run-spectrum
 ```
 
 Defaults point to the sibling z88dk checkout and the standard macOS ZEsarUX
 application. Override `Z88DK_HOME` or `ZESARUX` when they live elsewhere.
-The existing `make run-spectrum` spelling launches the same emulator target.
 
-The build uses z88dk `sdcc_iy` with startup 31 and no stdio/CRT terminal. A
-direct 4×8 renderer composes the complete 6,912-byte Spectrum display in a
-global off-screen buffer, then copies attributes first and bitmap pixels
-second. This greatly reduces visible redraw, but is not an atomic page flip.
+Both builds use z88dk `sdcc_iy` with startup 31 and no stdio/CRT terminal. The
+Spectrum renderer composes the complete 6,912-byte display in a global
+off-screen buffer, then copies attributes first and bitmap pixels second. The
+Timex renderer composes its two interleaved 6,144-byte display files. These
+transfers reduce visible redraw, but are not atomic page flips.
 
 The linker also emits a map. `tools/check_48k_layout.py` verifies the actual
 BSS-to-stack gap; the size of the TAP file alone is not accepted as proof that
@@ -86,12 +109,13 @@ the game fits in 48K.
 ```text
 include/    portable game and font interfaces
 src/game.c  deterministic, platform-independent game rules
-src/main.c  Spectrum input, direct renderer, screens, and turn loop
-src/font4x8.c  complete hand-drawn 96-glyph font
-src/glyph_styles.c  selectable robot-glyph table
-tests/      host tests for mechanics, font, and robot styles
-tools/      TAP/layout checks and ZEsarUX UI smoke test
-dist/       ready-to-load 48K TAP and binary-distribution licence
+src/main.c  machine screens, direct renderers, and turn loop
+src/input.c  keyboard-matrix and Kempston joystick input
+src/font4x8.c  complete hand-drawn Spectrum font
+src/font8x8.c  public-domain-derived Timex hi-res font
+tests/      host tests for mechanics, fonts, and joystick decoding
+tools/      TAP/layout checks and ZEsarUX UI smoke tests
+dist/       ready-to-load Spectrum and Timex TAPs plus distribution licence
 docs/       upstream and architecture notes
 ```
 

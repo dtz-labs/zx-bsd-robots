@@ -14,4 +14,7 @@
  */
 extern const uint8_t robots_font4x8[ROBOTS_FONT_BYTES];
 
+/* Fixed enemy sprite.  The printable '+' in the font remains a true plus. */
+extern const uint8_t robots_robot4x8[8];
+
 #endif

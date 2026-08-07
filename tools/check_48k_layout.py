@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail when the linked 48K image leaves too little room for the stack."""
+"""Fail when a linked 48K machine image leaves too little stack room."""
 
 from __future__ import annotations
 
@@ -24,7 +24,10 @@ def parse_symbols(path: Path) -> dict[str, int]:
 
 def main(argv: list[str]) -> int:
     if len(argv) != 2:
-        print(f"usage: {Path(argv[0]).name} build/robots-zx.map", file=sys.stderr)
+        print(
+            f"usage: {Path(argv[0]).name} build/zx-bsd-robots-48k.map",
+            file=sys.stderr,
+        )
         return 2
 
     map_path = Path(argv[1])
@@ -44,13 +47,13 @@ def main(argv: list[str]) -> int:
     gap = stack_top - bss_end
     required = max(MIN_STACK_RESERVE, stack_reserve)
     if gap < required:
-        print("ZX Spectrum 48K layout: NOT SAFE")
+        print("48K RAM layout: NOT SAFE")
         print(f"  BSS ends at ${bss_end:04X}")
         print(f"  stack starts at ${stack_top:04X}")
         print(f"  only {gap} bytes remain; require at least {required}")
         return 1
 
-    print("ZX Spectrum 48K layout: safe")
+    print("48K RAM layout: safe")
     print(f"  BSS end:   ${bss_end:04X}")
     print(f"  stack top: ${stack_top:04X}")
     print(f"  reserved:  {stack_reserve} bytes")

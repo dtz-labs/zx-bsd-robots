@@ -1,7 +1,8 @@
 # Upstream reference
 
-Robots ZX is a new Spectrum implementation of the rules and presentation of
-the BSD game `robots`. The behavioural reference is NetBSD release 10:
+ZX BSD Robots is a new Sinclair ZX implementation of the rules and
+presentation of the BSD game `robots`. The behavioural reference is NetBSD
+release 10:
 
 - [`robots(6)` manual](https://man.netbsd.org/robots.6) — rules, scoring, and
   commands.
@@ -19,10 +20,10 @@ the BSD game `robots`. The behavioural reference is NetBSD release 10:
 
 The original files carry a 3-clause BSD licence from the Regents of the
 University of California. The notice, conditions, and disclaimer are retained
-in the repository `LICENSE`, copied alongside the release TAP, and available
+in the repository `LICENSE`, copied alongside the release TAPs, and available
 in full through the two-page viewer opened with `L` on the title screen.
 
-## Deliberate Spectrum differences
+## Deliberate machine-port differences
 
 - Unix command-line modes, user score files, and persistent high-score tables
   do not exist on a tape-loaded 48K machine. The port keeps a session high
@@ -30,13 +31,28 @@ in full through the two-page viewer opened with `L` on the title screen.
 - Numeric command prefixes are omitted because the top-row number keys double
   as the convenient 3×3 movement layout.
 - The optional Unix `-a` level-four start and its 600-point advance bonus are
-  omitted; every Spectrum game starts at field 1.
+  omitted; every machine game starts at field 1.
 - Redraw, terminal-size checks, real-time mode, and autobot mode are platform
-  concerns that do not apply to this turn-based Spectrum build.
-- The logical game identities remain `@`, `+`, and `*`. The `@` player and `*`
-  heap keep fixed pixel-art glyphs; title-only `G` changes the robot rendering
-  between the port's `ROBOT`, playful `ATARI` and `C64` interpretations, and
-  `BSD`, the historical plus sign. This presentation choice does not change
-  rules or the logical board state.
-- The frame uses dedicated corner glyphs rather than reusing `+`, and the whole
-  interface uses bright-white ink on black paper.
+  concerns that do not apply to these turn-based machine builds.
+- The logical game identities remain `@`, `+`, and `*`, but each has one fixed
+  pixel-art rendering. In particular, the logical robot `+` is shown as a
+  robot rather than a printable plus sign. This does not change rules or the
+  logical board state.
+- The frame uses dedicated corner glyphs rather than reusing `+`.
+- The Spectrum build uses bright-white ink on black paper except for its
+  bright-red player. Its 4×8 cells share 8×8 hardware attributes, so the
+  adjacent half-cell shares the player's red ink.
+- The TC2048/TC2068/TS2068 build uses the Timex SCLD's 512×192 mode. That
+  mode's ink/paper selection applies to the whole screen, so the interface is
+  monochrome white on black and distinguishes the player by shape.
+- Enabled Kempston input is read in parallel with the keyboard and FIRE
+  teleports. It defaults off because an absent port `$1F` floats; title key
+  `K` toggles it. Cursor and Sinclair 1 joystick standards overlap in the
+  Spectrum keyboard matrix, so title key `J` selects which mapping is active.
+
+## Timex font reference
+
+The Timex edition's printable 8×8 character shapes are adapted from Daniel
+Hepper's public-domain [font8x8](https://github.com/dhepper/font8x8)
+collection. The repository stores the converted bitmap data needed by the
+direct Timex renderer; no font is loaded at runtime.

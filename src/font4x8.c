@@ -6,8 +6,8 @@
 
 /*
  * Hand-drawn terminal face.  Most letters use a compact 4x5 skeleton inside
- * the 4x8 cell.  The player and junk heap are tiny pixel-art sprites; enemy
- * variants live in glyph_styles.c so '+' remains usable in ordinary text:
+ * the 4x8 cell.  The player and junk heap are tiny pixel-art sprites.  The
+ * fixed enemy sprite is separate so '+' remains usable in ordinary text:
  *
  *     '+' plus sign      '*' junk heap      '@' player
  */
@@ -108,6 +108,10 @@ const uint8_t robots_font4x8[ROBOTS_FONT_BYTES] = {
     GLYPH(0, 0, 0, 14, 2, 2, 2, 2),      /* 125 top-right corner */
     GLYPH(0, 0, 5, 10, 0, 0, 0, 0),      /* 126 ~ */
     GLYPH(0, 15, 9, 9, 9, 9, 15, 0)      /* 127 block */
+};
+
+const uint8_t robots_robot4x8[8] = {
+    GLYPH(6, 15, 9, 15, 6, 9, 9, 0)
 };
 
 #undef GLYPH

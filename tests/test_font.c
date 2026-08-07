@@ -27,6 +27,7 @@ int main(void)
     const uint8_t *plus;
     const uint8_t *heap;
     const uint8_t *player;
+    unsigned char nonzero;
 
     for (i = 0u; i < ROBOTS_FONT_BYTES; ++i) {
         if ((robots_font4x8[i] >> 4) != (robots_font4x8[i] & 15u)) {
@@ -53,6 +54,20 @@ int main(void)
     if (same_glyph('+', '{') || same_glyph('+', '}') ||
         same_glyph('+', '[') || same_glyph('+', ']')) {
         fputs("frame corners must not reuse the plus glyph\n", stderr);
+        return 1;
+    }
+
+    nonzero = 0u;
+    for (i = 0u; i < 8u; ++i) {
+        if ((robots_robot4x8[i] >> 4) != (robots_robot4x8[i] & 15u)) {
+            fputs("robot sprite must duplicate each nibble\n", stderr);
+            return 1;
+        }
+        if (robots_robot4x8[i] != 0u)
+            nonzero = 1u;
+    }
+    if (nonzero == 0u) {
+        fputs("robot sprite must not be blank\n", stderr);
         return 1;
     }
 
