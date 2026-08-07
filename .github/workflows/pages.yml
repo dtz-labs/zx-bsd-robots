@@ -1,0 +1,116 @@
+name: Pages
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+env:
+  JSSPECCY_RELEASE: v3.2.0-timex.2
+  JSSPECCY_SHA256: 2f63f7b15168cd2c1b409fea9d09ce7197e2ff03b737cffeca7073389c73ed2d
+  Z88DK_IMAGE: z88dk/z88dk:20260803@sha256:bee965eedd8211fa3344afcd38ce8c5d3b8318745e2c3c94c49ee9f7c35872f4
+  Z88DK_HOME: /opt/z88dk
+
+jobs:
+  deploy:
+    name: Deploy browser player
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Run host unit tests
+        run: make test-host
+
+      - name: Build both TAPs with pinned z88dk
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD":/src -w /src "$Z88DK_IMAGE" \
+            make spectrum timex Z88DK_HOME="$Z88DK_HOME"
+
+      - name: Validate TAPs and memory layouts
+        run: |
+          set -eu
+          make check-layout
+          python3 tools/check_tap.py build/zx-bsd-robots-48k.tap
+          python3 tools/check_tap.py build/zx-bsd-robots-timex-512.tap
+
+      - name: Fetch JSSpeccy3 with Timex support
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          mkdir -p _emulator
+          gh release download "$JSSPECCY_RELEASE" \
+            --repo dtz-labs/jsspeccy3 \
+            --pattern jsspeccy-dist.zip \
+            --output _emulator/jsspeccy-dist.zip
+          printf '%s  %s\n' "$JSSPECCY_SHA256" \
+            _emulator/jsspeccy-dist.zip | sha256sum --check -
+          unzip -q _emulator/jsspeccy-dist.zip -d _emulator/dist
+
+      - name: Assemble site
+        run: |
+          set -eu
+          mkdir -p _site
+          cp -R site/. _site/
+          mkdir -p _site/jsspeccy/roms _site/jsspeccy/tapeloaders
+          cp _emulator/dist/jsspeccy/jsspeccy.js _site/jsspeccy/
+          cp _emulator/dist/jsspeccy/jsspeccy-worker.js _site/jsspeccy/
+          cp _emulator/dist/jsspeccy/jsspeccy-core.wasm _site/jsspeccy/
+          cp _emulator/dist/jsspeccy/jsspeccy.js.LICENSE.txt \
+            _site/jsspeccy/
+          cp _emulator/dist/COPYING _site/jsspeccy/COPYING
+          cp _emulator/dist/jsspeccy/roms/48.rom \
+            _site/jsspeccy/roms/48.rom
+          cp _emulator/dist/jsspeccy/tapeloaders/tape_48.szx \
+            _site/jsspeccy/tapeloaders/tape_48.szx
+          mkdir -p _site/licenses
+          cp LICENSES/Clarified-Artistic.txt \
+            _site/licenses/Clarified-Artistic.txt
+          cp THIRD_PARTY_NOTICES.txt _site/licenses/THIRD_PARTY_NOTICES.txt
+          cp build/zx-bsd-robots-48k.tap _site/zx-bsd-robots-48k.tap
+          cp build/zx-bsd-robots-timex-512.tap \
+            _site/zx-bsd-robots-timex-512.tap
+
+      - name: Check deployed files
+        run: |
+          set -eu
+          test -f _site/index.html
+          test -f _site/styles.css
+          test -f _site/tokens.css
+          test -f _site/zx-bsd-robots-48k.tap
+          test -f _site/zx-bsd-robots-timex-512.tap
+          test -f _site/jsspeccy/jsspeccy.js
+          test -f _site/jsspeccy/jsspeccy-worker.js
+          test -f _site/jsspeccy/jsspeccy-core.wasm
+          test -f _site/jsspeccy/COPYING
+          test -f _site/licenses/Clarified-Artistic.txt
+          test -f _site/licenses/THIRD_PARTY_NOTICES.txt
+          test -f _site/jsspeccy/roms/48.rom
+          test -f _site/jsspeccy/tapeloaders/tape_48.szx
+          test ! -e _site/jsspeccy/roms/tc2048.rom
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

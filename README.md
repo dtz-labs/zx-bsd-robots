@@ -1,12 +1,18 @@
 # ZX BSD Robots
 
 **ZX BSD Robots** is a faithful Sinclair ZX port of Ken Arnold's classic BSD
-terminal game `robots`. Two ready-to-load editions are included:
+terminal game `robots`. You can
+[play it in the browser](https://dtz-labs.github.io/zx-bsd-robots/) or download
+either ready-to-load edition directly from the latest GitHub release:
 
-- [dist/zx-bsd-robots-48k.tap](dist/zx-bsd-robots-48k.tap) for an unexpanded ZX
-  Spectrum 48K and compatible 128K machines;
-- [dist/zx-bsd-robots-timex-512.tap](dist/zx-bsd-robots-timex-512.tap) for the
-  TC2048, TC2068, and TS2068, using the Timex SCLD's real 512×192 hi-res mode.
+- [ZX Spectrum 48K TAP](https://github.com/dtz-labs/zx-bsd-robots/releases/latest/download/zx-bsd-robots-48k.tap)
+  for an unexpanded ZX Spectrum 48K and compatible 128K machines;
+- [Timex 512×192 TAP](https://github.com/dtz-labs/zx-bsd-robots/releases/latest/download/zx-bsd-robots-timex-512.tap)
+  for the TC2048, TC2068, and TS2068, using the Timex SCLD's real hi-res mode.
+
+The TAP files are built by GitHub Actions and attached individually to
+[GitHub Releases](https://github.com/dtz-labs/zx-bsd-robots/releases). They are
+not committed to the repository and are not wrapped in ZIP archives.
 
 You have no weapon. Every robot takes one step towards you after each turn, so
 survival means making the machines collide with one another or with the junk
@@ -27,14 +33,18 @@ necessarily safe.
   only if the player survives the field.
 
 The port keeps the historical `@`, `+`, and `*` identities in the game state.
-The logical `+` is drawn as one fixed pixel-art robot; `@` is the player and
-`*` is a junk heap. Frame corners have their own corner glyphs and never reuse
-the robot.
+The Spectrum edition draws the logical `+` as one fixed pixel-art robot. The
+Timex edition defaults to the original printable `+` and lets you cycle through
+pixel robot, Atari-style, and C64-style enemy themes with `G` on its title
+screen. `@` remains the player and `*` remains a junk heap in every theme.
+Frame corners have dedicated joined glyphs and never reuse the enemy.
 
 Both editions retain a 64-column display, so the original 61-character arena
-fits without scaling. The Spectrum version uses the hand-drawn 4×8 font and
-draws the player in bright red on black; because Spectrum colour attributes
-cover an 8×8 cell, the neighbouring 4-pixel character half shares that colour.
+fits without scaling. The Spectrum version uses a cleaner 4×8 font adapted
+from z88dk's `font_4x8_default` by Dominic Morris, while retaining local object
+and frame glyphs. It draws the player in bright red on black; because Spectrum
+colour attributes cover an 8×8 cell, the neighbouring 4-pixel character half
+shares that colour.
 The Timex version uses an 8×8 font derived from Daniel Hepper's public-domain
 [font8x8](https://github.com/dhepper/font8x8) collection. Timex hi-res has one
 screen-wide ink/paper choice, so that edition is monochrome white on black and
@@ -49,25 +59,15 @@ distinguishes the player by shape rather than colour.
 | `Space`, `.`, `5` | Stand still for one safe turn |
 | Caps Shift + direction | Run safely in that direction |
 | `S` or `>` | Stand safely for as long as possible |
-| `T` or `0` | Teleport to a random empty square |
+| `T` | Teleport to a random empty square |
 | `W` | Risky wait until you die or the field is cleared |
 | `I` or `?` | On-machine help |
 | `Q` | Quit, with confirmation |
-| Joystick directions | One safe movement turn |
-| Joystick FIRE | Teleport |
-| `J` | On the title screen, select `OFF`, `CURSOR`, or `SINCLAIR 1` matrix mapping |
-| `K` | On the title screen, enable or disable Kempston input |
 | `L` | On the title screen, read the complete two-page BSD licence |
+| `G` | Timex title only: cycle ORIGINAL + / PIXEL ROBOT / ATARI / C64 |
 
-Kempston works alongside the keyboard when enabled with `K`. It defaults off
-because port `$1F` floats on a machine without a Kempston interface and cannot
-be auto-detected reliably. Cursor and Sinclair 1 joysticks are both
-keyboard-matrix standards: Cursor uses `5/6/7/8/0`, while Sinclair 1 uses
-`6/7/8/9/0`. Because the shared contacts
-are electrically indistinguishable, only one of those two mappings can be
-active at a time; select it with `J`. `OFF` preserves the numeric-key movement
-layout exactly. Joystick input is release-triggered, so holding a direction
-cannot accidentally spend several turns.
+The game is keyboard-only. In particular, `0` is not an alias for teleport:
+use `T` so the numeric movement layout remains unambiguous.
 
 The title screen shows the complete original and numeric movement-key diagrams.
 The on-machine help explains the rules and every in-game key, while the
@@ -79,9 +79,9 @@ disclaimer available on the machine itself.
 The default `make` target prints help instead of silently choosing a build.
 
 ```sh
-make spectrum-dist   # build dist/zx-bsd-robots-48k.tap
-make timex-dist      # build dist/zx-bsd-robots-timex-512.tap
-make all             # build both TAP files
+make spectrum        # build build/zx-bsd-robots-48k.tap
+make timex           # build build/zx-bsd-robots-timex-512.tap
+make all             # build both TAP files in build/
 make test            # host mechanics + TAP + memory-layout gates
 make smoke-spectrum  # 48K UI smoke in headless ZEsarUX
 make smoke-timex     # 512×192 UI smoke on an emulated TC2048
@@ -109,13 +109,15 @@ the game fits in 48K.
 ```text
 include/    portable game and font interfaces
 src/game.c  deterministic, platform-independent game rules
+src/controls.c  portable keyboard-only command mapping
 src/main.c  machine screens, direct renderers, and turn loop
-src/input.c  keyboard-matrix and Kempston joystick input
-src/font4x8.c  complete hand-drawn Spectrum font
+src/font4x8.c  adapted z88dk 4x8 font plus local object/frame glyphs
 src/font8x8.c  public-domain-derived Timex hi-res font
-tests/      host tests for mechanics, fonts, and joystick decoding
+src/timex_themes.c  Timex-only enemy theme bitmaps and labels
+tests/      host tests for mechanics, controls, fonts, and Timex themes
 tools/      TAP/layout checks and ZEsarUX UI smoke tests
-dist/       ready-to-load Spectrum and Timex TAPs plus distribution licence
+site/       GitHub Pages player powered by the dtz-labs JSSpeccy3 fork
+.github/    CI, raw-TAP release publishing, Pages deployment, and funding
 docs/       upstream and architecture notes
 ```
 
@@ -126,6 +128,10 @@ the NetBSD version as its behavioural reference. See
 [docs/UPSTREAM.md](docs/UPSTREAM.md) for the exact sources and documented port
 differences.
 
-Source and binary redistribution are covered by the 3-clause BSD licence in
-[LICENSE](LICENSE). Press `L` on the title screen to read the same complete
-licence in-game. Binary distributions must keep that licence with the TAP.
+The game and port source are covered by the 3-clause BSD licence in
+[LICENSE](LICENSE). Press `L` on the title screen to read that complete licence
+in-game. The Spectrum font adaptation retains Dominic Morris's attribution and
+the z88dk [Clarified Artistic License](LICENSES/Clarified-Artistic.txt).
+Detailed provenance is in [THIRD_PARTY_NOTICES.txt](THIRD_PARTY_NOTICES.txt).
+Every GitHub release publishes both licence texts and that notice beside the
+two TAP files.

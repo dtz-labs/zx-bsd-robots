@@ -1,0 +1,44 @@
+ZX BSD Robots - third-party notices
+===================================
+
+Spectrum 4x8 font
+-----------------
+
+The printable 4x8 character forms in src/font4x8.c are adapted from
+font_4x8_default by Dominic Morris, distributed with z88dk.
+
+Source revision:
+https://github.com/z88dk/z88dk/blob/4d530b6eb779ad0f2a1d13c0bb670cf717477501/libsrc/_DEVELOPMENT/font/font_4x8/font_4x8_default.bin
+
+Original binary SHA-256:
+342ccc05f79f45a36f3240bdd453f894004dbb646d9b7f5186e996f650eeff46
+
+ZX BSD Robots stores the data as C glyph rows and replaces the player, heap,
+horizontal rule, joined frame corners, and vertical rule with local artwork.
+The separate enemy sprite is also local. These modifications were made in
+August 2026 and are freely available in this public source repository.
+
+The complete Clarified Artistic License is in:
+LICENSES/Clarified-Artistic.txt
+
+
+Timex 8x8 font
+--------------
+
+The Timex printable 8x8 character forms are adapted from Daniel Hepper's
+public-domain font8x8 collection:
+https://github.com/dhepper/font8x8
+
+The player, enemy themes, and joined frame glyphs are local artwork.
+
+
+Browser emulator
+----------------
+
+GitHub Pages uses JSSpeccy3 v3.2.0-timex.2, licensed under GPL-3.0:
+https://github.com/dtz-labs/jsspeccy3/tree/v3.2.0-timex.2
+
+The deployed browser player includes only the Spectrum 48K ROM and tape
+loader from that distribution. The Timex ROM is deliberately not copied to
+the Pages artifact; the Timex game remains available as a downloadable TAP.
+JSSpeccy3's COPYING file and ROM licence notes are linked from the page.

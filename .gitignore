@@ -1,4 +1,9 @@
 /build/
+/dist/
+/_emulator/
+/_site/
+__pycache__/
+*.pyc
 *.o
 *.bin
 *.map

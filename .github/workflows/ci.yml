@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Pinned weekly z88dk image: keep builds stable until deliberately updated.
+  Z88DK_IMAGE: z88dk/z88dk:20260803@sha256:bee965eedd8211fa3344afcd38ce8c5d3b8318745e2c3c94c49ee9f7c35872f4
+  Z88DK_HOME: /opt/z88dk
+
+jobs:
+  host-tests:
+    name: Host unit tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Run host unit tests
+        run: make test-host
+
+  build-taps:
+    name: Build and validate TAPs
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Ensure generated TAPs are not versioned
+        run: |
+          set -eu
+          tracked="$(git ls-files '*.tap' '*.zip')"
+          if test -n "$tracked"; then
+            echo "Generated TAP/ZIP files must not be committed:" >&2
+            printf '%s\n' "$tracked" >&2
+            exit 1
+          fi
+
+      - name: Build both TAPs with pinned z88dk
+        run: |
+          docker run --rm --user "$(id -u):$(id -g)" \
+            -v "$PWD":/src -w /src "$Z88DK_IMAGE" \
+            make all Z88DK_HOME="$Z88DK_HOME"
+
+      - name: Validate TAPs and memory layouts
+        run: make check-layout check-tap
+
+      - name: Check release files
+        run: |
+          set -eu
+          test -f build/zx-bsd-robots-48k.tap
+          test -f build/zx-bsd-robots-timex-512.tap
+          test "$(find build -maxdepth 1 -type f -name '*.tap' | wc -l)" -eq 2

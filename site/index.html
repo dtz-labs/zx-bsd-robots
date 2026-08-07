@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Play ZX BSD Robots in a browser, or download the Spectrum 48K and Timex 512x192 TAP releases.">
+  <title>ZX BSD Robots — play in the browser</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to the game</a>
+
+  <header class="terminal-nav" aria-label="Site header">
+    <div class="terminal-nav__line">
+      <span class="terminal-nav__prompt" aria-hidden="true">&gt;</span>
+      <a class="terminal-nav__brand" href="./" aria-label="ZX BSD Robots home">zx-bsd-robots</a>
+      <nav class="terminal-nav__links" aria-label="Page sections">
+        <a href="#player">--play</a>
+        <a href="#downloads">--download</a>
+        <a href="#controls">--keys</a>
+        <a href="https://github.com/dtz-labs/zx-bsd-robots">--source</a>
+      </nav>
+      <span class="terminal-nav__caret" aria-hidden="true">&#9608;</span>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="intro" aria-labelledby="page-title">
+      <div class="intro__copy">
+        <h1 id="page-title">ZX BSD ROBOTS</h1>
+        <p class="intro__lede">The classic BSD terminal chase, rebuilt for the
+          ZX Spectrum. Make the robots collide, keep clear of the junk heaps,
+          and remember that teleporting is random—not safe.</p>
+      </div>
+      <div class="intro__aside">
+        <p>Two machine-native editions. The standard game runs on a 48K
+          Spectrum; the Timex build uses the SCLD’s real 512&times;192 hi-res mode.</p>
+        <a class="sponsor-link" href="https://buymeacoffee.com/mpasternak">Buy me a coffee</a>
+      </div>
+    </section>
+
+    <section class="workbench" id="player" aria-labelledby="player-title">
+      <div class="workbench__panel">
+        <h2 id="player-title">Play in the browser</h2>
+        <p>Press the play button, then click the display before using the
+          keyboard. The browser player runs the Spectrum 48K edition; the Timex
+          hi-res TAP remains available as a direct download below.</p>
+
+        <p class="machine-note">Spectrum 48K · 4×8 font · red player</p>
+        <p class="emulator-status" id="emulator-status" role="status" aria-live="polite">Starting JSSpeccy3…</p>
+      </div>
+
+      <div class="emulator-stage" role="region" aria-label="Emulator display and controls">
+        <div id="jsspeccy"></div>
+        <noscript>
+          <p class="noscript-note">JavaScript is required to run the emulator.
+            Both TAP files remain available below.</p>
+        </noscript>
+      </div>
+    </section>
+
+    <section class="downloads" id="downloads" aria-labelledby="downloads-title">
+      <div class="downloads__copy">
+        <h2 id="downloads-title">Download TAP files</h2>
+        <p>These links fetch the individual files from the latest GitHub
+          Release. There is no ZIP archive and no download from the repository’s
+          <code>dist</code> directory.</p>
+      </div>
+      <div class="downloads__actions">
+        <a class="action-link" href="https://github.com/dtz-labs/zx-bsd-robots/releases/latest/download/zx-bsd-robots-48k.tap">
+          Spectrum 48K TAP
+        </a>
+        <a class="action-link" href="https://github.com/dtz-labs/zx-bsd-robots/releases/latest/download/zx-bsd-robots-timex-512.tap">
+          Timex 512&times;192 TAP
+        </a>
+        <a class="text-link" href="https://github.com/dtz-labs/zx-bsd-robots/releases">View all releases</a>
+      </div>
+    </section>
+
+    <section class="controls" id="controls" aria-labelledby="controls-title">
+      <h2 id="controls-title">Keyboard controls</h2>
+      <dl class="controls__list">
+        <div>
+          <dt><kbd>Y K U</kbd> / <kbd>H . L</kbd> / <kbd>B J N</kbd></dt>
+          <dd>Eight-direction movement and safe standing—the original vi-style layout.</dd>
+        </div>
+        <div>
+          <dt><kbd>7 8 9</kbd> / <kbd>4 5 6</kbd> / <kbd>1 2 3</kbd></dt>
+          <dd>The same movement on a Spectrum-friendly numeric layout.</dd>
+        </div>
+        <div>
+          <dt><kbd>T</kbd> / <kbd>t</kbd></dt>
+          <dd>Teleport to a random empty square.</dd>
+        </div>
+        <div>
+          <dt><kbd>W</kbd> / <kbd>S</kbd> / <kbd>I</kbd> / <kbd>Q</kbd></dt>
+          <dd>Risky wait / safe stand / help / quit.</dd>
+        </div>
+        <div>
+          <dt><kbd>L</kbd> on the title screen</dt>
+          <dd>Read the complete BSD licence on the Spectrum itself.</dd>
+        </div>
+        <div>
+          <dt><kbd>G</kbd> on the Timex title screen</dt>
+          <dd>Choose ORIGINAL +, PIXEL ROBOT, ATARI, or C64 robot glyphs.
+            The Spectrum 48K edition keeps its fixed pixel robot.</dd>
+        </div>
+      </dl>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="site-footer__line">
+      <span><strong>ZX BSD Robots</strong> — BSD-3-Clause</span>
+      <span>Browser:
+        <a href="https://github.com/gasman/jsspeccy3">JSSpeccy&nbsp;3</a>,
+        <a href="https://github.com/dtz-labs/jsspeccy3">dtz-labs Timex fork</a>
+      </span>
+      <a href="jsspeccy/COPYING">Emulator GPL-3.0</a>
+      <a href="licenses/Clarified-Artistic.txt">Spectrum font licence</a>
+      <a href="licenses/THIRD_PARTY_NOTICES.txt">Third-party notices</a>
+      <a href="https://github.com/dtz-labs/jsspeccy3/blob/v3.2.0-timex.2/README.md#licence">ROM licence notes</a>
+    </div>
+  </footer>
+
+  <script src="jsspeccy/jsspeccy.js"></script>
+  <script>
+    (function () {
+      "use strict";
+
+      var status = document.getElementById("emulator-status");
+      var zoom = window.innerWidth >= 720 ? 2 : 1;
+
+      try {
+        var emulator = JSSpeccy(document.getElementById("jsspeccy"), {
+          machine: 48,
+          openUrl: "zx-bsd-robots-48k.tap",
+          autoLoadTapes: true,
+          joystickEnabled: false,
+          joystickType: "none",
+          zoom: zoom
+        });
+
+        emulator.onReady(function () {
+          status.textContent = "Spectrum 48K is ready. Press play in the emulator.";
+          status.dataset.state = "success";
+        });
+
+        window.addEventListener("resize", function () {
+          var responsiveZoom;
+
+          if (document.fullscreenElement) {
+            return;
+          }
+          responsiveZoom = window.innerWidth >= 720 ? 2 : 1;
+          if (responsiveZoom !== zoom) {
+            zoom = responsiveZoom;
+            emulator.setZoom(zoom);
+          }
+        });
+      } catch (error) {
+        status.textContent = "The emulator could not start. Download the TAP below and use a local emulator.";
+        status.dataset.state = "error";
+      }
+    }());
+  </script>
+</body>
+</html>

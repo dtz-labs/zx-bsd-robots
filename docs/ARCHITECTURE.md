@@ -31,21 +31,18 @@ Status replaces part of the top border, leaving the play area unchanged.
 Dedicated top-left, top-right, bottom-left, and bottom-right glyphs keep frame
 corners independent from game objects.
 
-The logical robot remains `+` in the portable game state but has one fixed
-pixel-art rendering in both editions. The `@` player and `*` heap also have
-fixed shapes. There is no runtime object-style selector. The title contains
-both movement-key diagrams; title-only `L` opens the complete BSD licence on
-two navigable pages.
+The logical robot remains `+` in the portable game state. The Spectrum edition
+uses one fixed pixel-art rendering. The Timex title offers four presentation
+themes: original printable `+`, pixel robot, Atari-style, and C64-style. This
+choice changes only the enemy bitmap; the `@` player, `*` heap, rules, and board
+state remain unchanged. Both titles contain the two movement-key diagrams;
+title-only `L` opens the complete BSD licence on two navigable pages.
 
-`src/input.c` normalises z88dk's active-high joystick bits and emits one event
-per release and deflection. Enabled joystick input is polled beside the
-keyboard and maps FIRE to teleport. Kempston defaults off and is toggled with
-title-screen `K`: when the interface is absent, port `$1F` is a floating bus,
-so automatic detection would create phantom moves. Cursor (`5/6/7/8/0`) and
-Sinclair 1 (`6/7/8/9/0`) share physical keyboard-matrix contacts, so software
-cannot identify both
-simultaneously. Title-screen `J` selects one matrix convention or turns matrix
-joystick decoding off; all non-overlapping keyboard commands remain active.
+Input is keyboard-only. The portable decoder in `src/controls.c` maps keys to
+actions, and `src/main.c` dispatches those actions. Both the original
+`YKU/H.L/BJN` layout and the Spectrum-friendly `789/456/123` layout are always
+available. Teleport is deliberately bound only to `T`; `0` has no command and
+there is no joystick polling or title-screen input selector.
 
 ## Spectrum 256×192 renderer
 
@@ -66,10 +63,12 @@ first frame, while each presentation copies the complete buffer to display
 RAM. The display and character buffers are global so they cannot exhaust the
 Z80 stack.
 
-`src/font4x8.c` contains 96 glyphs (ASCII 32–127), eight bytes each. Every
-4-bit scanline is duplicated into both nibbles, allowing a glyph to occupy
-either half of an 8-pixel Spectrum byte. The renderer reads this font directly;
-there is no CRT font redirect.
+`src/font4x8.c` contains 96 glyphs (ASCII 32–127), eight bytes each. Its
+printable forms are adapted from Dominic Morris's z88dk
+`font_4x8_default`; the object and joined-frame glyphs are local. Every 4-bit
+scanline is duplicated into both nibbles, allowing a glyph to occupy either
+half of an 8-pixel Spectrum byte. The renderer reads this font directly; there
+is no CRT font redirect.
 
 ## Timex 512×192 renderer
 
@@ -85,6 +84,8 @@ therefore uses white ink on black paper throughout and distinguishes the player
 by its glyph instead of colour. Printable characters use an 8×8 font adapted
 from Daniel Hepper's public-domain
 [font8x8](https://github.com/dhepper/font8x8) collection.
+`src/timex_themes.c` supplies the three optional enemy bitmaps; a null theme
+bitmap deliberately selects the printable `+` for the default original look.
 
 ## 48K gate
 

@@ -33,12 +33,11 @@ FONT_BYTES = FONT_GLYPHS * FONT_SCANLINES
 TITLE_FRAGMENT = "ROBOTS"
 TITLE_OBJECT_FRAGMENT = "ENEMY"
 TITLE_PLAYER_HEAP_FRAGMENT = "YOU @   HEAP *"
-TITLE_GLYPH_SELECTOR_FRAGMENT = "G: GLYPHS"
-TITLE_JOYSTICK_OFF_FRAGMENT = "J: MATRIX [OFF]"
-TITLE_JOYSTICK_CURSOR_FRAGMENT = "J: MATRIX [CURSOR]"
-TITLE_JOYSTICK_SINCLAIR_FRAGMENT = "J: MATRIX [SINCLAIR 1]"
-TITLE_KEMPSTON_OFF_FRAGMENT = "K: KEMPSTON [OFF]"
-TITLE_KEMPSTON_ON_FRAGMENT = "K: KEMPSTON [ON]"
+TITLE_GLYPH_SELECTOR_FRAGMENT = "G: THEME"
+TITLE_KEYBOARD_FRAGMENT = "KEYBOARD CONTROLS ONLY"
+TITLE_ORIGINAL_KEYS_FRAGMENT = "Y K U"
+TITLE_NUMERIC_KEYS_FRAGMENT = "7 8 9"
+TITLE_TELEPORT_FRAGMENT = "T TELEPORT"
 TITLE_LICENSE_FRAGMENT = "L: BSD LICENSE"
 LICENSE_PAGE_1_FRAGMENT = "BSD LICENSE 1/2"
 LICENSE_PAGE_2_FRAGMENT = "BSD LICENSE 2/2"
@@ -422,66 +421,20 @@ def main() -> int:
                 and has_fragment(rows, TITLE_OBJECT_FRAGMENT)
                 and has_fragment(rows, TITLE_PLAYER_HEAP_FRAGMENT)
                 and has_fragment(rows, TITLE_LICENSE_FRAGMENT)
-                and has_fragment(rows, TITLE_JOYSTICK_OFF_FRAGMENT)
-                and has_fragment(rows, TITLE_KEMPSTON_OFF_FRAGMENT)
+                and has_fragment(rows, TITLE_KEYBOARD_FRAGMENT)
+                and has_fragment(rows, TITLE_ORIGINAL_KEYS_FRAGMENT)
+                and has_fragment(rows, TITLE_NUMERIC_KEYS_FRAGMENT)
+                and has_fragment(rows, TITLE_TELEPORT_FRAGMENT)
+                and not has_fragment(rows, "JOYSTICK")
+                and not has_fragment(rows, "KEMPSTON")
+                and not has_fragment(rows, "MATRIX")
+                and not has_fragment(rows, "T/0")
                 and not has_fragment(rows, TITLE_GLYPH_SELECTOR_FRAGMENT)
             ),
             timeout=STARTUP_TIMEOUT_SECONDS,
             stable_for=SCREEN_STABLE_SECONDS,
         )
         assert_white_on_black(title_attributes, "title screen")
-
-        send_ascii(connection, "j")
-        _, _, cursor_title_attributes = wait_for_screen(
-            connection,
-            font_address,
-            "title with Cursor joystick selected",
-            lambda rows: has_fragment(rows, TITLE_JOYSTICK_CURSOR_FRAGMENT),
-            stable_for=SCREEN_STABLE_SECONDS,
-        )
-        assert_white_on_black(cursor_title_attributes, "Cursor joystick title")
-
-        send_ascii(connection, "j")
-        _, _, sinclair_title_attributes = wait_for_screen(
-            connection,
-            font_address,
-            "title with Sinclair 1 joystick selected",
-            lambda rows: has_fragment(rows, TITLE_JOYSTICK_SINCLAIR_FRAGMENT),
-            stable_for=SCREEN_STABLE_SECONDS,
-        )
-        assert_white_on_black(
-            sinclair_title_attributes, "Sinclair 1 joystick title"
-        )
-
-        send_ascii(connection, "j")
-        _, _, off_title_attributes = wait_for_screen(
-            connection,
-            font_address,
-            "title with matrix joystick disabled again",
-            lambda rows: has_fragment(rows, TITLE_JOYSTICK_OFF_FRAGMENT),
-            stable_for=SCREEN_STABLE_SECONDS,
-        )
-        assert_white_on_black(off_title_attributes, "matrix joystick off title")
-
-        send_ascii(connection, "k")
-        _, _, kempston_on_attributes = wait_for_screen(
-            connection,
-            font_address,
-            "title with Kempston enabled",
-            lambda rows: has_fragment(rows, TITLE_KEMPSTON_ON_FRAGMENT),
-            stable_for=SCREEN_STABLE_SECONDS,
-        )
-        assert_white_on_black(kempston_on_attributes, "Kempston on title")
-
-        send_ascii(connection, "k")
-        _, _, kempston_off_attributes = wait_for_screen(
-            connection,
-            font_address,
-            "title with Kempston disabled again",
-            lambda rows: has_fragment(rows, TITLE_KEMPSTON_OFF_FRAGMENT),
-            stable_for=SCREEN_STABLE_SECONDS,
-        )
-        assert_white_on_black(kempston_off_attributes, "Kempston off title")
 
         send_ascii(connection, "l")
         _, _, license_1_attributes = wait_for_screen(
@@ -524,8 +477,12 @@ def main() -> int:
                 has_fragment(rows, TITLE_OBJECT_FRAGMENT)
                 and has_fragment(rows, TITLE_PLAYER_HEAP_FRAGMENT)
                 and has_fragment(rows, TITLE_LICENSE_FRAGMENT)
-                and has_fragment(rows, TITLE_JOYSTICK_OFF_FRAGMENT)
-                and has_fragment(rows, TITLE_KEMPSTON_OFF_FRAGMENT)
+                and has_fragment(rows, TITLE_KEYBOARD_FRAGMENT)
+                and has_fragment(rows, TITLE_TELEPORT_FRAGMENT)
+                and not has_fragment(rows, "JOYSTICK")
+                and not has_fragment(rows, "KEMPSTON")
+                and not has_fragment(rows, "MATRIX")
+                and not has_fragment(rows, "T/0")
                 and not has_fragment(rows, TITLE_GLYPH_SELECTOR_FRAGMENT)
             ),
             stable_for=SCREEN_STABLE_SECONDS,
@@ -547,7 +504,12 @@ def main() -> int:
             connection,
             font_address,
             f"help screen containing {HELP_FRAGMENT!r}",
-            lambda rows: has_fragment(rows, HELP_FRAGMENT),
+            lambda rows: (
+                has_fragment(rows, HELP_FRAGMENT)
+                and has_fragment(rows, "T                TELEPORT")
+                and not has_fragment(rows, "T OR 0")
+                and not has_fragment(rows, "JOYSTICK")
+            ),
             stable_for=SCREEN_STABLE_SECONDS,
         )
         assert_white_on_black(help_attributes, "help screen")
@@ -586,7 +548,7 @@ def main() -> int:
             save_ppm(args.screenshot.resolve(), bitmap, attributes)
 
         print(
-            "ZEsarUX 48K smoke OK: joystick selector, fixed sprites, "
+            "ZEsarUX 48K smoke OK: keyboard-only control copy, fixed sprites, "
             "two-page BSD license, "
             "white-on-black UI, red player, game board, frame corners, help, "
             "quit cancellation, "

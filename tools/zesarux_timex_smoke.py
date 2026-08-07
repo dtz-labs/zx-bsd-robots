@@ -34,12 +34,13 @@ FONT_BYTES = FONT_GLYPHS * FONT_SCANLINES
 TITLE_FRAGMENT = "ROBOTS"
 TITLE_TIMEX_FRAGMENT = "TIMEX HI-RES 512X192"
 TITLE_LICENSE_FRAGMENT = "L: BSD LICENSE"
-REMOVED_SELECTOR_FRAGMENT = "G: GLYPHS"
-TITLE_JOYSTICK_OFF_FRAGMENT = "J: MATRIX [OFF]"
-TITLE_JOYSTICK_CURSOR_FRAGMENT = "J: MATRIX [CURSOR]"
-TITLE_JOYSTICK_SINCLAIR_FRAGMENT = "J: MATRIX [SINCLAIR 1]"
-TITLE_KEMPSTON_OFF_FRAGMENT = "K: KEMPSTON [OFF]"
-TITLE_KEMPSTON_ON_FRAGMENT = "K: KEMPSTON [ON]"
+TITLE_THEME_ORIGINAL_FRAGMENT = "G: THEME [ORIGINAL +]"
+TITLE_THEME_ROBOT_FRAGMENT = "G: THEME [PIXEL ROBOT]"
+TITLE_THEME_ATARI_FRAGMENT = "G: THEME [ATARI]"
+TITLE_THEME_C64_FRAGMENT = "G: THEME [C64]"
+TITLE_ORIGINAL_KEYS_FRAGMENT = "Y K U"
+TITLE_NUMERIC_KEYS_FRAGMENT = "7 8 9"
+TITLE_TELEPORT_FRAGMENT = "T TELEPORT"
 LICENSE_PAGE_1_FRAGMENT = "BSD LICENSE 1/2"
 LICENSE_PAGE_2_FRAGMENT = "BSD LICENSE 2/2"
 BOARD_HEADER_FRAGMENT = "ROBOTS"
@@ -406,16 +407,18 @@ def main() -> int:
                 has_fragment(rows, TITLE_FRAGMENT)
                 and has_fragment(rows, TITLE_TIMEX_FRAGMENT)
                 and has_fragment(rows, TITLE_LICENSE_FRAGMENT)
-                and has_fragment(rows, TITLE_JOYSTICK_OFF_FRAGMENT)
-                and has_fragment(rows, TITLE_KEMPSTON_OFF_FRAGMENT)
+                and has_fragment(rows, TITLE_ORIGINAL_KEYS_FRAGMENT)
+                and has_fragment(rows, TITLE_NUMERIC_KEYS_FRAGMENT)
+                and has_fragment(rows, TITLE_TELEPORT_FRAGMENT)
+                and has_fragment(rows, TITLE_THEME_ORIGINAL_FRAGMENT)
+                and not has_fragment(rows, "JOYSTICK")
+                and not has_fragment(rows, "KEMPSTON")
+                and not has_fragment(rows, "MATRIX")
+                and not has_fragment(rows, "T/0")
             ),
             timeout=STARTUP_TIMEOUT_SECONDS,
             stable_for=SCREEN_STABLE_SECONDS,
         )
-        if has_fragment(title_rows, REMOVED_SELECTOR_FRAGMENT):
-            raise AssertionError(
-                f"title still contains removed selector {REMOVED_SELECTOR_FRAGMENT!r}"
-            )
         assert_two_file_picture(title_0, title_1, "title screen")
         scld_mode = read_port(connection, SCLD_PORT)
         if scld_mode != SCLD_HIRES_WHITE_ON_BLACK:
@@ -424,47 +427,20 @@ def main() -> int:
                 f"mode: port $FF is ${scld_mode:02X}, expected $3E"
             )
 
-        send_ascii(connection, "j")
-        wait_for_screen(
-            connection,
-            font_address,
-            "title with Cursor joystick selected",
-            lambda rows: has_fragment(rows, TITLE_JOYSTICK_CURSOR_FRAGMENT),
-            stable_for=SCREEN_STABLE_SECONDS,
-        )
-
-        send_ascii(connection, "k")
-        wait_for_screen(
-            connection,
-            font_address,
-            "title with Kempston enabled",
-            lambda rows: has_fragment(rows, TITLE_KEMPSTON_ON_FRAGMENT),
-            stable_for=SCREEN_STABLE_SECONDS,
-        )
-        send_ascii(connection, "k")
-        wait_for_screen(
-            connection,
-            font_address,
-            "title with Kempston disabled again",
-            lambda rows: has_fragment(rows, TITLE_KEMPSTON_OFF_FRAGMENT),
-            stable_for=SCREEN_STABLE_SECONDS,
-        )
-        send_ascii(connection, "j")
-        wait_for_screen(
-            connection,
-            font_address,
-            "title with Sinclair 1 joystick selected",
-            lambda rows: has_fragment(rows, TITLE_JOYSTICK_SINCLAIR_FRAGMENT),
-            stable_for=SCREEN_STABLE_SECONDS,
-        )
-        send_ascii(connection, "j")
-        wait_for_screen(
-            connection,
-            font_address,
-            "title with matrix joystick disabled again",
-            lambda rows: has_fragment(rows, TITLE_JOYSTICK_OFF_FRAGMENT),
-            stable_for=SCREEN_STABLE_SECONDS,
-        )
+        for expected_theme in (
+            TITLE_THEME_ROBOT_FRAGMENT,
+            TITLE_THEME_ATARI_FRAGMENT,
+            TITLE_THEME_C64_FRAGMENT,
+            TITLE_THEME_ORIGINAL_FRAGMENT,
+        ):
+            send_ascii(connection, "g")
+            wait_for_screen(
+                connection,
+                font_address,
+                f"Timex title theme {expected_theme!r}",
+                lambda rows, fragment=expected_theme: has_fragment(rows, fragment),
+                stable_for=SCREEN_STABLE_SECONDS,
+            )
 
         send_ascii(connection, "l")
         wait_for_screen(
@@ -501,17 +477,17 @@ def main() -> int:
             lambda rows: (
                 has_fragment(rows, TITLE_TIMEX_FRAGMENT)
                 and has_fragment(rows, TITLE_LICENSE_FRAGMENT)
-                and has_fragment(rows, TITLE_JOYSTICK_OFF_FRAGMENT)
-                and has_fragment(rows, TITLE_KEMPSTON_OFF_FRAGMENT)
+                and has_fragment(rows, TITLE_ORIGINAL_KEYS_FRAGMENT)
+                and has_fragment(rows, TITLE_NUMERIC_KEYS_FRAGMENT)
+                and has_fragment(rows, TITLE_TELEPORT_FRAGMENT)
+                and has_fragment(rows, TITLE_THEME_ORIGINAL_FRAGMENT)
+                and not has_fragment(rows, "JOYSTICK")
+                and not has_fragment(rows, "KEMPSTON")
+                and not has_fragment(rows, "MATRIX")
+                and not has_fragment(rows, "T/0")
             ),
             stable_for=SCREEN_STABLE_SECONDS,
         )
-        if has_fragment(returned_title_rows, REMOVED_SELECTOR_FRAGMENT):
-            raise AssertionError(
-                f"returned title contains removed selector "
-                f"{REMOVED_SELECTOR_FRAGMENT!r}"
-            )
-
         send_ascii(connection, " ")
         board_rows, board_0, board_1 = wait_for_screen(
             connection,
@@ -527,7 +503,12 @@ def main() -> int:
             connection,
             font_address,
             f"help screen containing {HELP_FRAGMENT!r}",
-            lambda rows: has_fragment(rows, HELP_FRAGMENT),
+            lambda rows: (
+                has_fragment(rows, HELP_FRAGMENT)
+                and has_fragment(rows, "T                TELEPORT")
+                and not has_fragment(rows, "T OR 0")
+                and not has_fragment(rows, "JOYSTICK")
+            ),
             stable_for=SCREEN_STABLE_SECONDS,
         )
 
@@ -580,7 +561,7 @@ def main() -> int:
 
         print(
             "ZEsarUX Timex smoke OK: SCLD $3E, 512x192 two-file display, "
-            "joystick selector, fixed glyphs, "
+            "keyboard-only control copy, four theme labels with wraparound, "
             "two-page BSD license, game board, frame corners, help, quit "
             "cancellation, return to play, and clean ULA-mode exit"
         )

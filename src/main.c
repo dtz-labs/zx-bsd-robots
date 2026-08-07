@@ -4,11 +4,12 @@
 
 #ifdef ROBOTS_TIMEX_HIRES
 #include "font8x8.h"
+#include "timex_themes.h"
 #else
 #include "font4x8.h"
 #endif
+#include "robots_controls.h"
 #include "robots_game.h"
-#include "robots_input.h"
 
 #define SCREEN_COLUMNS 64u
 #define SCREEN_ROWS 24u
@@ -45,6 +46,9 @@
 
 static RobotsGame game;
 static unsigned long high_score;
+#ifdef ROBOTS_TIMEX_HIRES
+static unsigned char timex_theme;
+#endif
 
 /*
  * The complete display is composed off-screen.  The Spectrum build stores
@@ -117,7 +121,13 @@ static void screen_put(unsigned char x, unsigned char y, unsigned char value)
 static void screen_put_robot(unsigned char x, unsigned char y)
 {
 #ifdef ROBOTS_TIMEX_HIRES
-    screen_put_glyph(x, y, robots_robot8x8);
+    const uint8_t *glyph;
+
+    glyph = robots_timex_theme_enemy(timex_theme);
+    if (glyph == NULL)
+        screen_put(x, y, '+');
+    else
+        screen_put_glyph(x, y, glyph);
 #else
     screen_put_glyph(x, y, robots_robot4x8);
 #endif
@@ -264,38 +274,6 @@ static int read_key(void)
     return key;
 }
 
-static const char *matrix_joystick_label(void)
-{
-    RobotsMatrixJoystick mode;
-
-    mode = robots_input_get_matrix_joystick();
-    if (mode == ROBOTS_MATRIX_JOYSTICK_CURSOR)
-        return "CURSOR";
-    if (mode == ROBOTS_MATRIX_JOYSTICK_SINCLAIR1)
-        return "SINCLAIR 1";
-    return "OFF";
-}
-
-static void cycle_matrix_joystick(void)
-{
-    RobotsMatrixJoystick mode;
-
-    mode = robots_input_get_matrix_joystick();
-    if (mode == ROBOTS_MATRIX_JOYSTICK_OFF)
-        mode = ROBOTS_MATRIX_JOYSTICK_CURSOR;
-    else if (mode == ROBOTS_MATRIX_JOYSTICK_CURSOR)
-        mode = ROBOTS_MATRIX_JOYSTICK_SINCLAIR1;
-    else
-        mode = ROBOTS_MATRIX_JOYSTICK_OFF;
-    robots_input_set_matrix_joystick(mode);
-}
-
-static void toggle_kempston(void)
-{
-    robots_input_set_kempston(
-        (unsigned char)(robots_input_get_kempston() == 0u));
-}
-
 static const char *license_page_1[24] = {
     "COPYRIGHT (C) 1980, 1993",
     "    THE REGENTS OF THE UNIVERSITY OF CALIFORNIA.  ALL",
@@ -398,12 +376,13 @@ static unsigned int title_seed(void)
         if (key == 'l' || key == 'L') {
             show_license();
             show_title();
-        } else if (key == 'j' || key == 'J') {
-            cycle_matrix_joystick();
+#ifdef ROBOTS_TIMEX_HIRES
+        } else if (key == 'g' || key == 'G') {
+            ++timex_theme;
+            if (timex_theme >= ROBOTS_TIMEX_THEME_COUNT)
+                timex_theme = ROBOTS_TIMEX_THEME_ORIGINAL;
             show_title();
-        } else if (key == 'k' || key == 'K') {
-            toggle_kempston();
-            show_title();
+#endif
         } else {
             seed ^= (unsigned int)((unsigned int)key << 8);
             if (seed == 0u)
@@ -415,13 +394,14 @@ static unsigned int title_seed(void)
 
 static void show_title(void)
 {
-    const char *joystick_label;
     unsigned char x;
     unsigned char y;
+#ifdef ROBOTS_TIMEX_HIRES
     unsigned char label_end;
+    const char *theme_label;
+#endif
 
     clear_screen();
-    joystick_label = matrix_joystick_label();
 
     screen_center(0u, "ZX BSD ROBOTS");
 #ifdef ROBOTS_TIMEX_HIRES
@@ -450,18 +430,17 @@ static void show_title(void)
     screen_center(12u, "Y K U               7 8 9");
     screen_center(13u, "H . L      OR       4 5 6");
     screen_center(14u, "B J N               1 2 3");
-    screen_center(16u, "T/0 TELEPORT   W RISKY WAIT   S/> SAFE WAIT");
+    screen_center(16u, "T TELEPORT   W RISKY WAIT   S/> SAFE WAIT");
     screen_center(17u, "CAPS+MOVE RUNS SAFELY   I HELP   Q QUIT");
-
-    screen_text(4u, 18u, "J: MATRIX [");
-    screen_text(15u, 18u, joystick_label);
-    label_end = (unsigned char)(15u + text_length(joystick_label));
+#ifdef ROBOTS_TIMEX_HIRES
+    theme_label = robots_timex_theme_label(timex_theme);
+    screen_text(18u, 18u, "G: THEME [");
+    screen_text(28u, 18u, theme_label);
+    label_end = (unsigned char)(28u + text_length(theme_label));
     screen_put(label_end, 18u, ']');
-    screen_text(32u, 18u, "K: KEMPSTON [");
-    if (robots_input_get_kempston() != 0u)
-        screen_text(45u, 18u, "ON]");
-    else
-        screen_text(45u, 18u, "OFF]");
+#else
+    screen_center(18u, "KEYBOARD CONTROLS ONLY");
+#endif
 
     screen_text(18u, 19u, "ENEMY");
     screen_put_robot(24u, 19u);
@@ -494,11 +473,11 @@ static void show_help(void)
     screen_text(2u, 13u, "SPACE / . / 5    STAND STILL FOR ONE SAFE TURN");
     screen_text(2u, 14u, "CAPS + DIRECTION RUN SAFELY IN THAT DIRECTION");
     screen_text(2u, 15u, "S OR >           STAND SAFELY AS LONG AS POSSIBLE");
-    screen_text(2u, 16u, "T OR 0           TELEPORT TO A RANDOM EMPTY CELL");
+    screen_text(2u, 16u, "T                TELEPORT TO A RANDOM EMPTY CELL");
     screen_text(2u, 17u, "W                RISKY WAIT UNTIL THE FIELD ENDS");
     screen_text(2u, 18u, "I                THIS HELP SCREEN");
     screen_text(2u, 19u, "Q                QUIT");
-    screen_text(2u, 20u, "JOYSTICK DIRECTIONS MOVE; FIRE TELEPORTS");
+    screen_text(2u, 20u, "ALL CONTROLS USE THE SPECTRUM KEYBOARD");
     screen_text(2u, 21u, "W BONUS: +1 FOR EACH ROBOT KILLED, ONLY IF YOU LIVE.");
     screen_center(22u, "PRESS SPACE TO RETURN");
     present_screen();
@@ -695,36 +674,6 @@ static unsigned char show_game_over(void)
     return (unsigned char)(key == 'q' || key == 'Q');
 }
 
-static unsigned char direction_for_key(int key, signed char *dx,
-                                       signed char *dy, unsigned char *run)
-{
-    *dx = 0;
-    *dy = 0;
-    *run = 0u;
-
-    switch (key) {
-    case 'y': case '7': *dx = -1; *dy = -1; return 1u;
-    case 'k': case '8': *dy = -1; return 1u;
-    case 'u': case '9': *dx = 1; *dy = -1; return 1u;
-    case 'h': case '4': *dx = -1; return 1u;
-    case 'l': case '6': *dx = 1; return 1u;
-    case 'b': case '1': *dx = -1; *dy = 1; return 1u;
-    case 'j': case '2': *dy = 1; return 1u;
-    case 'n': case '3': *dx = 1; *dy = 1; return 1u;
-    case ' ': case '.': case '5': case 13: return 1u;
-    case 'Y': *dx = -1; *dy = -1; *run = 1u; return 1u;
-    case 'K': *dy = -1; *run = 1u; return 1u;
-    case 'U': *dx = 1; *dy = -1; *run = 1u; return 1u;
-    case 'H': *dx = -1; *run = 1u; return 1u;
-    case 'L': *dx = 1; *run = 1u; return 1u;
-    case 'B': *dx = -1; *dy = 1; *run = 1u; return 1u;
-    case 'J': *dy = 1; *run = 1u; return 1u;
-    case 'N': *dx = 1; *dy = 1; *run = 1u; return 1u;
-    case 's': case 'S': case '>': *run = 1u; return 1u;
-    default: return 0u;
-    }
-}
-
 static unsigned char run_safely(signed char dx, signed char dy)
 {
     unsigned char result;
@@ -761,84 +710,48 @@ static unsigned char wait_to_end(void)
     return result;
 }
 
-static RobotsInputEvent read_game_input(int *key, signed char *dx,
-                                        signed char *dy)
-{
-    RobotsInputEvent event;
-
-    for (;;) {
-        event = robots_input_poll(dx, dy);
-        if (event != ROBOTS_INPUT_NONE) {
-            *key = 0;
-            return event;
-        }
-
-        *key = in_inkey();
-        if (*key != 0 && robots_input_matrix_active() == 0u) {
-            in_wait_nokey();
-            robots_input_reset();
-            return ROBOTS_INPUT_NONE;
-        }
-        z80_delay_ms(5u);
-    }
-}
-
 static unsigned char play_game(void)
 {
     int key;
-    RobotsInputEvent input_event;
     signed char dx;
     signed char dy;
     unsigned char run;
     unsigned char result;
+    RobotsControlAction action;
 
-    robots_input_reset();
     for (;;) {
         render_board();
-        input_event = read_game_input(&key, &dx, &dy);
+        key = read_key();
+        action = robots_control_decode(key, &dx, &dy, &run);
         result = ROBOTS_GAME_RESULT_REJECTED;
 
-        if (input_event == ROBOTS_INPUT_TELEPORT) {
+        if (action == ROBOTS_CONTROL_HELP) {
+            show_help();
+            continue;
+        }
+        if (action == ROBOTS_CONTROL_QUIT) {
+            if (confirm_quit() != 0u)
+                return 1u;
+            continue;
+        }
+        if (action == ROBOTS_CONTROL_TELEPORT) {
             result = robots_game_teleport(&game);
             if (result != ROBOTS_GAME_RESULT_REJECTED)
                 render_board();
-        } else if (input_event == ROBOTS_INPUT_MOVE) {
-            result = robots_game_move(&game, dx, dy);
-            if (result == ROBOTS_GAME_RESULT_REJECTED)
-                show_notice('!');
-            else
-                render_board();
-        } else {
-            if (key == 'i' || key == 'I' || key == '?') {
-                show_help();
-                robots_input_reset();
-                continue;
-            }
-            if (key == 'q' || key == 'Q') {
-                if (confirm_quit() != 0u)
-                    return 1u;
-                robots_input_reset();
-                continue;
-            }
-            if (key == 't' || key == 'T' || key == '0') {
-                result = robots_game_teleport(&game);
-                if (result != ROBOTS_GAME_RESULT_REJECTED)
+        } else if (action == ROBOTS_CONTROL_WAIT) {
+            result = wait_to_end();
+        } else if (action == ROBOTS_CONTROL_MOVE) {
+            if (run != 0u)
+                result = run_safely(dx, dy);
+            else {
+                result = robots_game_move(&game, dx, dy);
+                if (result == ROBOTS_GAME_RESULT_REJECTED)
+                    show_notice('!');
+                else
                     render_board();
-            } else if (key == 'w' || key == 'W') {
-                result = wait_to_end();
-            } else if (direction_for_key(key, &dx, &dy, &run) != 0u) {
-                if (run != 0u)
-                    result = run_safely(dx, dy);
-                else {
-                    result = robots_game_move(&game, dx, dy);
-                    if (result == ROBOTS_GAME_RESULT_REJECTED)
-                        show_notice('!');
-                    else
-                        render_board();
-                }
-            } else {
-                show_notice('?');
             }
+        } else {
+            show_notice('?');
         }
 
         if (result == ROBOTS_GAME_RESULT_CLEARED)
@@ -855,8 +768,9 @@ int main(void)
     z80_outp(0xfeu, 0u);
     blank_live_screen();
     high_score = 0ul;
-    robots_input_init(ROBOTS_MATRIX_JOYSTICK_OFF);
-
+#ifdef ROBOTS_TIMEX_HIRES
+    timex_theme = ROBOTS_TIMEX_THEME_ORIGINAL;
+#endif
     for (;;) {
         show_title();
         seed = title_seed();

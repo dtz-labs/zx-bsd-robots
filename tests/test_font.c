@@ -27,6 +27,7 @@ int main(void)
     const uint8_t *plus;
     const uint8_t *heap;
     const uint8_t *player;
+    const uint8_t *letter_a;
     unsigned char nonzero;
 
     for (i = 0u; i < ROBOTS_FONT_BYTES; ++i) {
@@ -39,7 +40,13 @@ int main(void)
     plus = glyph('+');
     heap = glyph('*');
     player = glyph('@');
-    if (plus[2] != 0x22u || plus[3] != 0xffu || plus[4] != 0x22u) {
+    letter_a = glyph('A');
+    if (letter_a[1] != 0x22u || letter_a[4] != 0x77u ||
+        letter_a[6] != 0x55u) {
+        fputs("adapted z88dk letter shapes changed unexpectedly\n", stderr);
+        return 1;
+    }
+    if (plus[2] != 0x22u || plus[4] != 0x77u || plus[6] != 0x22u) {
         fputs("printable plus glyph changed unexpectedly\n", stderr);
         return 1;
     }
