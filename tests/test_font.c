@@ -24,7 +24,7 @@ static int same_glyph(unsigned char first, unsigned char second)
 int main(void)
 {
     unsigned int i;
-    const uint8_t *robot;
+    const uint8_t *plus;
     const uint8_t *heap;
     const uint8_t *player;
 
@@ -35,11 +35,11 @@ int main(void)
         }
     }
 
-    robot = glyph('+');
+    plus = glyph('+');
     heap = glyph('*');
     player = glyph('@');
-    if (robot[0] != 0x66u || robot[1] != 0xffu || robot[6] != 0x99u) {
-        fputs("robot pixel-art glyph changed unexpectedly\n", stderr);
+    if (plus[2] != 0x22u || plus[3] != 0xffu || plus[4] != 0x22u) {
+        fputs("printable plus glyph changed unexpectedly\n", stderr);
         return 1;
     }
     if (heap[3] != 0xffu || player[3] != 0xffu) {
@@ -47,7 +47,12 @@ int main(void)
         return 1;
     }
     if (same_glyph('+', '*') || same_glyph('+', '@') || same_glyph('*', '@')) {
-        fputs("game-object glyphs must remain visually distinct\n", stderr);
+        fputs("plus, heap, and player glyphs must remain distinct\n", stderr);
+        return 1;
+    }
+    if (same_glyph('+', '{') || same_glyph('+', '}') ||
+        same_glyph('+', '[') || same_glyph('+', ']')) {
+        fputs("frame corners must not reuse the plus glyph\n", stderr);
         return 1;
     }
 

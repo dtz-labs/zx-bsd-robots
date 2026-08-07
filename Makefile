@@ -19,19 +19,19 @@ DIST_TAP := $(DIST_DIR)/robots-zx-48k.tap
 DIST_LICENSE := $(DIST_DIR)/LICENSE.txt
 SCREENSHOT ?= $(BUILD_DIR)/robots-zx-smoke.ppm
 
-SOURCES := src/main.c src/game.c src/font4x8.c
-HEADERS := include/robots_game.h include/font4x8.h
+SOURCES := src/main.c src/game.c src/font4x8.c src/glyph_styles.c
+HEADERS := include/robots_game.h include/font4x8.h include/glyph_styles.h
 TEST_GAME_BIN := $(BUILD_DIR)/test-game
 TEST_FONT_BIN := $(BUILD_DIR)/test-font
+TEST_GLYPHS_BIN := $(BUILD_DIR)/test-glyph-styles
 
-ZCC_FLAGS ?= +zx -vn -SO3 -clib=sdcc_iy -startup=5
+ZCC_FLAGS ?= +zx -vn -SO3 -clib=sdcc_iy -startup=31
 ZCC_FLAGS += -I$(ROOT)/include \
 	-pragma-define:REGISTER_SP=65535 \
-	-pragma-define:CRT_STACK_SIZE=2048 \
-	-pragma-redirect:CRT_OTERM_FONT_4X8=_robots_font4x8
+	-pragma-define:CRT_STACK_SIZE=2048
 
 .PHONY: help all spectrum spectrum-dist test test-host check-z88dk \
-	check-layout check-tap verify smoke-spectrum run-spectrum clean
+	check-layout check-tap verify smoke-spectrum run run-spectrum clean
 
 help:
 	@printf '%s\n' \
@@ -40,8 +40,8 @@ help:
 		'  make spectrum        Build the ZX Spectrum 48K TAP' \
 		'  make spectrum-dist   Copy the release TAP to dist/' \
 		'  make test            Run host logic tests and TAP/layout checks' \
-		'  make smoke-spectrum  Exercise title/help/gameplay in headless ZEsarUX' \
-		'  make run-spectrum    Launch the 48K TAP in ZEsarUX' \
+		'  make smoke-spectrum  Exercise title/licence/gameplay in headless ZEsarUX' \
+		'  make run             Launch the 48K TAP in ZEsarUX' \
 		'  make verify          Run every automated check, including emulator smoke' \
 		'  make clean           Remove generated build files' \
 		'' \
@@ -91,9 +91,16 @@ $(TEST_FONT_BIN): tests/test_font.c src/font4x8.c include/font4x8.h | $(BUILD_DI
 	$(HOST_CC) -std=c89 -Wall -Wextra -Werror -pedantic \
 		-Iinclude tests/test_font.c src/font4x8.c -o "$@"
 
-test-host: $(TEST_GAME_BIN) $(TEST_FONT_BIN)
+$(TEST_GLYPHS_BIN): tests/test_glyph_styles.c src/glyph_styles.c src/font4x8.c \
+		include/glyph_styles.h include/font4x8.h | $(BUILD_DIR)
+	$(HOST_CC) -std=c89 -Wall -Wextra -Werror -pedantic \
+		-Iinclude tests/test_glyph_styles.c src/glyph_styles.c src/font4x8.c \
+		-o "$@"
+
+test-host: $(TEST_GAME_BIN) $(TEST_FONT_BIN) $(TEST_GLYPHS_BIN)
 	"$(TEST_GAME_BIN)"
 	"$(TEST_FONT_BIN)"
+	"$(TEST_GLYPHS_BIN)"
 
 check-layout: $(TAP)
 	$(PYTHON) tools/check_48k_layout.py "$(MAP)"
@@ -108,6 +115,8 @@ smoke-spectrum: $(DIST_TAP)
 		"$(DIST_TAP)" --map "$(MAP)" --screenshot "$(SCREENSHOT)"
 
 verify: test smoke-spectrum
+
+run: run-spectrum
 
 run-spectrum: $(DIST_TAP)
 	@test -x "$(ZESARUX)" || { \

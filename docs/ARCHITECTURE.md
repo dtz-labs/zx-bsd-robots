@@ -23,24 +23,35 @@ Host tests construct exact board states and cover:
 
 ## Spectrum front end
 
-z88dk CRT5 supplies a 64×24, 4×8 terminal. The 59×22 logical arena is drawn
-at screen columns 1–59 and rows 1–22, with the original frame at columns 0/60
-and rows 0/23. Status replaces part of the top border, leaving the play area
-unchanged.
+The Spectrum executable uses z88dk `sdcc_iy` startup 31, without stdio or a CRT
+terminal. `src/main.c` implements a direct 64×24, 4×8 renderer. The 59×22
+logical arena is drawn at screen columns 1–59 and rows 1–22, with its 61×24
+frame at columns 0/60 and rows 0/23. Status replaces part of the top border,
+leaving the play area unchanged. Dedicated top-left, top-right, bottom-left,
+and bottom-right glyphs keep frame corners independent from game objects.
 
-The front end builds a character snapshot in global memory and compares it to
-the previous snapshot. Only changed field cells are printed after the first
-frame, keeping safe runs and risky waits readable. The buffers are global so
-they cannot exhaust the Z80 stack.
+The front end composes all 6,144 bitmap bytes and 768 attribute bytes in one
+global 6,912-byte buffer. Presentation copies the attributes to Spectrum RAM
+first, establishing bright-white ink on black paper, and then copies the
+bitmap. The two transfers are sequential; this is deliberately described as
+reduced visible redraw, not an atomic page flip.
 
-Two adjacent 4-pixel characters share one Spectrum attribute byte. Attribute
-priority is player, robot, heap, border, empty field; this keeps important
-objects visible when two characters share a colour cell.
+A character snapshot is also compared with the previous field snapshot. Only
+changed field cells are re-rasterized into the off-screen buffer after the
+first frame, while each presentation copies the complete buffer to display
+RAM. The display and character buffers are global so they cannot exhaust the
+Z80 stack.
 
 `src/font4x8.c` contains 96 glyphs (ASCII 32–127), eight bytes each. Every
 4-bit scanline is duplicated into both nibbles, allowing a glyph to occupy
-either half of an 8-pixel Spectrum byte. The font is selected at link time via
-`CRT_OTERM_FONT_4X8`.
+either half of an 8-pixel Spectrum byte. The renderer reads this font directly;
+there is no CRT font redirect.
+
+`src/glyph_styles.c` supplies four renderings for the logical robot `+`. The
+title-only `G` key cycles `ROBOT`, `ATARI`, `C64`, and `BSD` (the historical
+plus sign), with `ROBOT` selected initially. The `@` player and `*` heap always
+come from the base font. The title also contains full movement-key diagrams;
+title-only `L` opens the complete BSD licence on two navigable pages.
 
 ## 48K gate
 
@@ -50,5 +61,7 @@ unless at least the declared 2 KB stack reserve remains. The TAP validator
 also verifies block checksums, BASIC autostart, load address, and CODE bounds.
 
 The emulator smoke test starts ZEsarUX as a 48K machine without video or audio,
-decodes the custom 64-column font directly from Spectrum RAM, and exercises
-title, game start, help, quit cancellation, and return to play.
+decodes the custom 64-column font directly from Spectrum RAM, and exercises the
+title controls, glyph selection, both licence pages, game start, help, quit
+cancellation, and return to play. It also checks the black-paper attributes and
+dedicated frame corners.

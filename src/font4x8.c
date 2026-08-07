@@ -6,10 +6,10 @@
 
 /*
  * Hand-drawn terminal face.  Most letters use a compact 4x5 skeleton inside
- * the 4x8 cell.  The original game's three marks deliberately become tiny
- * pixel-art sprites while retaining their historical characters:
+ * the 4x8 cell.  The player and junk heap are tiny pixel-art sprites; enemy
+ * variants live in glyph_styles.c so '+' remains usable in ordinary text:
  *
- *     '+' robot      '*' junk heap      '@' player
+ *     '+' plus sign      '*' junk heap      '@' player
  */
 const uint8_t robots_font4x8[ROBOTS_FONT_BYTES] = {
     GLYPH(0, 0, 0, 0, 0, 0, 0, 0),       /* 32 space */
@@ -23,7 +23,7 @@ const uint8_t robots_font4x8[ROBOTS_FONT_BYTES] = {
     GLYPH(0, 2, 4, 4, 4, 2, 0, 0),       /* 40 ( */
     GLYPH(0, 4, 2, 2, 2, 4, 0, 0),       /* 41 ) */
     GLYPH(0, 0, 5, 15, 6, 15, 11, 0),    /* 42 junk heap */
-    GLYPH(6, 15, 9, 15, 6, 9, 9, 0),     /* 43 robot */
+    GLYPH(0, 0, 2, 15, 2, 0, 0, 0),      /* 43 plus */
     GLYPH(0, 0, 0, 0, 0, 2, 2, 4),       /* 44 , */
     GLYPH(0, 0, 0, 15, 0, 0, 0, 0),      /* 45 - */
     GLYPH(0, 0, 0, 0, 0, 0, 2, 0),       /* 46 . */
@@ -71,9 +71,9 @@ const uint8_t robots_font4x8[ROBOTS_FONT_BYTES] = {
     GLYPH(0, 9, 9, 6, 6, 9, 9, 0),       /* 88 X */
     GLYPH(0, 9, 9, 6, 2, 2, 2, 0),       /* 89 Y */
     GLYPH(0, 15, 1, 2, 4, 8, 15, 0),     /* 90 Z */
-    GLYPH(0, 6, 4, 4, 4, 4, 6, 0),       /* 91 [ */
+    GLYPH(2, 2, 2, 3, 0, 0, 0, 0),       /* 91 bottom-left corner */
     GLYPH(0, 8, 8, 4, 2, 1, 1, 0),       /* 92 backslash */
-    GLYPH(0, 6, 2, 2, 2, 2, 6, 0),       /* 93 ] */
+    GLYPH(2, 2, 2, 14, 0, 0, 0, 0),      /* 93 bottom-right corner */
     GLYPH(0, 2, 5, 0, 0, 0, 0, 0),       /* 94 ^ */
     GLYPH(0, 0, 0, 0, 0, 0, 15, 0),      /* 95 _ */
     GLYPH(0, 4, 2, 0, 0, 0, 0, 0),       /* 96 grave */
@@ -103,9 +103,9 @@ const uint8_t robots_font4x8[ROBOTS_FONT_BYTES] = {
     GLYPH(0, 0, 9, 6, 6, 6, 9, 0),       /* 120 x */
     GLYPH(0, 0, 9, 9, 7, 1, 6, 0),       /* 121 y */
     GLYPH(0, 0, 15, 2, 4, 8, 15, 0),     /* 122 z */
-    GLYPH(0, 3, 2, 6, 2, 2, 3, 0),       /* 123 { */
+    GLYPH(0, 0, 0, 3, 2, 2, 2, 2),       /* 123 top-left corner */
     GLYPH(2, 2, 2, 2, 2, 2, 2, 2),       /* 124 | */
-    GLYPH(0, 12, 4, 6, 4, 4, 12, 0),     /* 125 } */
+    GLYPH(0, 0, 0, 14, 2, 2, 2, 2),      /* 125 top-right corner */
     GLYPH(0, 0, 5, 10, 0, 0, 0, 0),      /* 126 ~ */
     GLYPH(0, 15, 9, 9, 9, 9, 15, 0)      /* 127 block */
 };

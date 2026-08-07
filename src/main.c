@@ -1,8 +1,9 @@
 #include <input.h>
-#include <stdio.h>
 #include <string.h>
 #include <z80.h>
 
+#include "font4x8.h"
+#include "glyph_styles.h"
 #include "robots_game.h"
 
 #define SCREEN_COLUMNS 64u
@@ -11,14 +12,12 @@
 #define FIELD_RIGHT 60u
 #define NOTICE_COLUMN 62u
 
-#define ZX_ATTR_BASE ((volatile unsigned char *)22528u)
+#define SCREEN_BITMAP_BYTES 6144u
+#define SCREEN_ATTRIBUTE_BYTES 768u
+#define SCREEN_BYTES (SCREEN_BITMAP_BYTES + SCREEN_ATTRIBUTE_BYTES)
+#define ZX_BITMAP_BASE ((void *)16384u)
+#define ZX_ATTRIBUTE_BASE ((void *)22528u)
 #define ZX_BLACK 0u
-#define ZX_BLUE 1u
-#define ZX_RED 2u
-#define ZX_MAGENTA 3u
-#define ZX_GREEN 4u
-#define ZX_CYAN 5u
-#define ZX_YELLOW 6u
 #define ZX_WHITE 7u
 #define ZX_BRIGHT 64u
 
@@ -31,29 +30,82 @@
 static RobotsGame game;
 static unsigned long high_score;
 
-/* Global buffers keep the 2.6 KB play field off the small Z80 stack. */
+/*
+ * The complete 6912-byte display is composed off-screen.  Attributes are
+ * copied first and the bitmap second, avoiding progressive redraw and the
+ * CRT terminal's temporary black-ink-on-white-paper attributes.  All large
+ * buffers are global so they cannot exhaust the Z80 stack.
+ */
+static unsigned char screen_buffer[SCREEN_BYTES];
 static unsigned char render_cells[ROBOTS_GAME_HEIGHT][ROBOTS_GAME_WIDTH];
 static unsigned char previous_cells[ROBOTS_GAME_HEIGHT][ROBOTS_GAME_WIDTH];
 static unsigned char board_visible;
+static unsigned char glyph_style;
 
-static void screen_at(unsigned char x, unsigned char y)
+static unsigned int bitmap_offset(unsigned char x_byte,
+                                  unsigned char pixel_y)
 {
-    putchar(22);
-    putchar((int)(x + 1u));
-    putchar((int)(y + 1u));
+    return (unsigned int)(((unsigned int)(pixel_y & 0xc0u) << 5) |
+                          ((unsigned int)(pixel_y & 0x07u) << 8) |
+                          ((unsigned int)(pixel_y & 0x38u) << 2) |
+                          x_byte);
+}
+
+static void screen_put_glyph(unsigned char x, unsigned char y,
+                             const unsigned char *glyph)
+{
+    unsigned int offset;
+    unsigned char pixel_y;
+    unsigned char row;
+    unsigned char bits;
+
+    if (x >= SCREEN_COLUMNS || y >= SCREEN_ROWS)
+        return;
+    pixel_y = (unsigned char)(y * 8u);
+    for (row = 0u; row < 8u; ++row) {
+        offset = bitmap_offset((unsigned char)(x >> 1),
+                               (unsigned char)(pixel_y + row));
+        bits = glyph[row];
+        if ((x & 1u) == 0u)
+            screen_buffer[offset] =
+                (unsigned char)((screen_buffer[offset] & 0x0fu) |
+                                (bits & 0xf0u));
+        else
+            screen_buffer[offset] =
+                (unsigned char)((screen_buffer[offset] & 0xf0u) |
+                                (bits & 0x0fu));
+    }
 }
 
 static void screen_put(unsigned char x, unsigned char y, unsigned char value)
 {
-    screen_at(x, y);
-    putchar((int)value);
+    const unsigned char *glyph;
+
+    if (value < ROBOTS_FONT_FIRST || value >= 128u)
+        value = ' ';
+    glyph = &robots_font4x8[(unsigned int)(value - ROBOTS_FONT_FIRST) * 8u];
+    screen_put_glyph(x, y, glyph);
+}
+
+static void screen_put_robot(unsigned char x, unsigned char y)
+{
+    screen_put_glyph(x, y, robots_glyph_style_get(glyph_style)->robot);
+}
+
+static void screen_put_object(unsigned char x, unsigned char y,
+                              unsigned char value)
+{
+    if (value == '+')
+        screen_put_robot(x, y);
+    else
+        screen_put(x, y, value);
 }
 
 static void screen_text(unsigned char x, unsigned char y, const char *text)
 {
-    screen_at(x, y);
-    while (*text != '\0') {
-        putchar((unsigned char)*text);
+    while (*text != '\0' && x < SCREEN_COLUMNS) {
+        screen_put(x, y, (unsigned char)*text);
+        ++x;
         ++text;
     }
 }
@@ -91,37 +143,30 @@ static void screen_number(unsigned char x, unsigned char y,
             (unsigned char)('0' + (unsigned char)(value % 10ul));
         value /= 10ul;
     }
-    screen_at(x, y);
     for (i = 0u; i < width; ++i)
-        putchar(digits[i]);
+        screen_put((unsigned char)(x + i), y, digits[i]);
 }
 
 static void fill_attributes(unsigned char attribute)
 {
     unsigned int i;
 
-    for (i = 0u; i < 768u; ++i)
-        ZX_ATTR_BASE[i] = attribute;
-}
-
-static void set_attribute_span(unsigned char y, unsigned char x0,
-                               unsigned char x1, unsigned char attribute)
-{
-    unsigned char first;
-    unsigned char last;
-    unsigned char x;
-    unsigned int offset;
-
-    first = (unsigned char)(x0 >> 1);
-    last = (unsigned char)(x1 >> 1);
-    offset = (unsigned int)y * 32u;
-    for (x = first; x <= last; ++x)
-        ZX_ATTR_BASE[offset + x] = attribute;
+    for (i = 0u; i < SCREEN_ATTRIBUTE_BYTES; ++i)
+        screen_buffer[SCREEN_BITMAP_BYTES + i] = attribute;
 }
 
 static void clear_screen(void)
 {
-    putchar(12);
+    memset(screen_buffer, 0, SCREEN_BITMAP_BYTES);
+    fill_attributes(ATTR(ZX_WHITE, ZX_BLACK));
+}
+
+static void present_screen(void)
+{
+    /* Establish black paper before exposing the newly composed bitmap. */
+    memcpy(ZX_ATTRIBUTE_BASE, &screen_buffer[SCREEN_BITMAP_BYTES],
+           SCREEN_ATTRIBUTE_BYTES);
+    memcpy(ZX_BITMAP_BASE, screen_buffer, SCREEN_BITMAP_BYTES);
 }
 
 static int read_key(void)
@@ -137,6 +182,87 @@ static int read_key(void)
     return key;
 }
 
+static const char *license_page_1[24] = {
+    "COPYRIGHT (C) 1980, 1993",
+    "    THE REGENTS OF THE UNIVERSITY OF CALIFORNIA.  ALL",
+    "RIGHTS RESERVED.",
+    "COPYRIGHT (C) 2026 MICHAL PASTERNAK.",
+    "    ALL RIGHTS RESERVED.",
+    "",
+    "REDISTRIBUTION AND USE IN SOURCE AND BINARY FORMS, WITH OR",
+    "WITHOUT MODIFICATION, ARE PERMITTED PROVIDED THAT THE",
+    "FOLLOWING CONDITIONS ARE MET:",
+    "",
+    "1. REDISTRIBUTIONS OF SOURCE CODE MUST RETAIN THE ABOVE",
+    "   COPYRIGHT NOTICE, THIS LIST OF CONDITIONS AND THE",
+    "   FOLLOWING DISCLAIMER.",
+    "2. REDISTRIBUTIONS IN BINARY FORM MUST REPRODUCE THE ABOVE",
+    "   COPYRIGHT NOTICE, THIS LIST OF CONDITIONS AND THE",
+    "   FOLLOWING DISCLAIMER IN THE DOCUMENTATION AND/OR OTHER",
+    "   MATERIALS PROVIDED WITH THE DISTRIBUTION.",
+    "", "", "", "", "", "",
+    "SPACE: NEXT  Q: CLOSE                         BSD LICENSE 1/2"
+};
+
+static const char *license_page_2[24] = {
+    "3. NEITHER THE NAME OF THE UNIVERSITY NOR THE NAMES OF ITS",
+    "   CONTRIBUTORS MAY BE USED TO ENDORSE OR PROMOTE PRODUCTS",
+    "   DERIVED FROM THIS SOFTWARE WITHOUT SPECIFIC PRIOR WRITTEN",
+    "   PERMISSION.",
+    "",
+    "THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS",
+    "``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING,",
+    "BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY",
+    "AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO",
+    "EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY",
+    "DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR",
+    "CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO,",
+    "PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,",
+    "DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED",
+    "AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT",
+    "LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)",
+    "ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF",
+    "ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.",
+    "", "", "", "", "",
+    "SPACE: CLOSE  P: PREV                        BSD LICENSE 2/2"
+};
+
+static void show_title(void);
+
+static void show_license_page(const char **page)
+{
+    unsigned char y;
+
+    clear_screen();
+    for (y = 0u; y < SCREEN_ROWS; ++y)
+        screen_text(1u, y, page[y]);
+    present_screen();
+}
+
+static void show_license(void)
+{
+    unsigned char page;
+    int key;
+
+    page = 0u;
+    for (;;) {
+        if (page == 0u)
+            show_license_page(license_page_1);
+        else
+            show_license_page(license_page_2);
+
+        key = read_key();
+        if (key == 'q' || key == 'Q')
+            return;
+        if (page == 0u && (key == ' ' || key == 13))
+            page = 1u;
+        else if (page != 0u && (key == 'p' || key == 'P'))
+            page = 0u;
+        else if (page != 0u && (key == ' ' || key == 13))
+            return;
+    }
+}
+
 static unsigned int title_seed(void)
 {
     unsigned int seed;
@@ -144,48 +270,82 @@ static unsigned int title_seed(void)
 
     seed = 0xACE1u;
     in_wait_nokey();
-    key = 0;
-    while (key == 0) {
-        if ((seed & 1u) != 0u)
-            seed = (unsigned int)((seed >> 1) ^ 0xB400u);
-        else
-            seed >>= 1;
-        key = in_inkey();
+    for (;;) {
+        key = 0;
+        while (key == 0) {
+            if ((seed & 1u) != 0u)
+                seed = (unsigned int)((seed >> 1) ^ 0xB400u);
+            else
+                seed >>= 1;
+            key = in_inkey();
+        }
+        in_wait_nokey();
+
+        if (key == 'l' || key == 'L') {
+            show_license();
+            show_title();
+        } else if (key == 'g' || key == 'G') {
+            glyph_style = (unsigned char)(glyph_style + 1u);
+            if (glyph_style >= ROBOTS_GLYPH_STYLE_COUNT)
+                glyph_style = ROBOTS_GLYPH_STYLE_BSD;
+            show_title();
+        } else {
+            seed ^= (unsigned int)((unsigned int)key << 8);
+            if (seed == 0u)
+                seed = 1u;
+            return seed;
+        }
     }
-    in_wait_nokey();
-    seed ^= (unsigned int)((unsigned int)key << 8);
-    if (seed == 0u)
-        seed = 1u;
-    return seed;
 }
 
 static void show_title(void)
 {
-    clear_screen();
-    fill_attributes(ATTR(ZX_CYAN, ZX_BLACK));
-    set_attribute_span(1u, 0u, 63u, ATTR(ZX_YELLOW, ZX_BLACK));
-    set_attribute_span(2u, 0u, 63u, ATTR(ZX_YELLOW, ZX_BLACK));
-    set_attribute_span(5u, 12u, 51u, ATTR(ZX_RED, ZX_BLACK));
-    set_attribute_span(17u, 0u, 63u, ATTR(ZX_GREEN, ZX_BLACK));
-    set_attribute_span(20u, 0u, 63u, ATTR(ZX_YELLOW, ZX_BLACK));
+    const RobotsGlyphStyle *style;
+    unsigned char x;
+    unsigned char y;
+    unsigned char label_end;
 
-    screen_center(1u, "R O B O T S");
-    screen_center(2u, "THE CLASSIC BSD GAME");
-    screen_center(4u, "/--------------------------------------\\");
-    screen_center(5u, "|    +       +       +       +         |");
-    screen_center(6u, "|                                      |");
-    screen_center(7u, "|             \\    |    /             |");
-    screen_center(8u, "|                  @                   |");
-    screen_center(9u, "|             /    |    \\             |");
-    screen_center(10u, "|                                      |");
-    screen_center(11u, "|       *       *       *       *      |");
-    screen_center(12u, "\\--------------------------------------/");
-    screen_center(15u, "NO WEAPONS. MAKE THE ROBOTS COLLIDE.");
-    screen_center(17u, "59 X 22 ORIGINAL ARENA - PURE 48K");
-    screen_center(19u, "VI KEYS OR 1-9   T TELEPORT   W WAIT");
-    screen_center(20u, "PRESS ANY KEY");
-    screen_center(22u, "ORIGINAL GAME BY KEN ARNOLD - I: HELP IN GAME");
+    clear_screen();
+    style = robots_glyph_style_get(glyph_style);
+
+    screen_center(0u, "R O B O T S");
+    screen_center(1u, "THE CLASSIC BSD GAME - ZX SPECTRUM 48K");
+    screen_center(3u, "{--------------------------------------}");
+    for (y = 4u; y <= 7u; ++y) {
+        screen_put(12u, y, '|');
+        screen_put(51u, y, '|');
+    }
+    for (x = 18u; x <= 45u; x = (unsigned char)(x + 9u))
+        screen_put_robot(x, 4u);
+    screen_put_robot(23u, 5u);
+    screen_put_robot(41u, 5u);
+    screen_put(32u, 5u, '@');
+    screen_put(20u, 7u, '*');
+    screen_put(28u, 7u, '*');
+    screen_put(36u, 7u, '*');
+    screen_put(44u, 7u, '*');
+    screen_center(8u, "[--------------------------------------]");
+    screen_center(9u, "NO WEAPONS. MAKE THE ROBOTS COLLIDE.");
+
+    screen_center(11u, "MOVE: ORIGINAL KEYS       NUMBER KEYS");
+    screen_center(12u, "Y K U               7 8 9");
+    screen_center(13u, "H . L      OR       4 5 6");
+    screen_center(14u, "B J N               1 2 3");
+    screen_center(16u, "T/0 TELEPORT   W RISKY WAIT   S/> SAFE WAIT");
+    screen_center(17u, "CAPS+MOVE RUNS SAFELY   I HELP   Q QUIT");
+
+    screen_text(4u, 19u, "G: GLYPHS [");
+    screen_text(15u, 19u, style->label);
+    label_end = (unsigned char)(15u + text_length(style->label));
+    screen_put(label_end, 19u, ']');
+    screen_text(23u, 19u, "ENEMY");
+    screen_put_robot(29u, 19u);
+    screen_text(33u, 19u, "YOU @   HEAP *");
+    screen_center(20u, "L: BSD LICENSE");
+    screen_center(21u, "PRESS ANY OTHER KEY TO PLAY");
+    screen_center(22u, "ORIGINAL GAME BY KEN ARNOLD");
     board_visible = 0u;
+    present_screen();
 }
 
 static void show_help(void)
@@ -193,13 +353,10 @@ static void show_help(void)
     int key;
 
     clear_screen();
-    fill_attributes(ATTR(ZX_WHITE, ZX_BLACK));
-    set_attribute_span(0u, 0u, 63u, ATTR(ZX_YELLOW, ZX_BLUE));
-    set_attribute_span(22u, 0u, 63u, ATTR(ZX_CYAN, ZX_BLACK));
-
     screen_center(0u, "HOW TO PLAY");
-    screen_text(2u, 2u, "YOU ARE @. ROBOTS ARE +. JUNK HEAPS ARE *.");
-    screen_text(2u, 3u, "EVERY + TAKES ONE STEP TOWARD @ AFTER YOUR TURN.");
+    screen_text(2u, 2u, "YOU ARE @. ROBOTS ARE  . JUNK HEAPS ARE *.");
+    screen_put_robot(24u, 2u);
+    screen_text(2u, 3u, "EVERY ROBOT TAKES ONE STEP TOWARD @ AFTER YOUR TURN.");
     screen_text(2u, 4u, "LURE THEM INTO EACH OTHER OR INTO A HEAP.");
     screen_text(2u, 5u, "A NORMAL MOVE THAT WOULD KILL YOU IS REJECTED.");
 
@@ -218,6 +375,7 @@ static void show_help(void)
     screen_text(2u, 19u, "Q                QUIT");
     screen_text(2u, 21u, "W BONUS: +1 FOR EACH ROBOT KILLED, ONLY IF YOU LIVE.");
     screen_center(22u, "PRESS SPACE TO RETURN");
+    present_screen();
     do {
         key = read_key();
     } while (key != ' ' && key != 13);
@@ -254,54 +412,15 @@ static void draw_frame(void)
         screen_put(x, 0u, '-');
         screen_put(x, 23u, '-');
     }
-    screen_put(0u, 0u, '+');
-    screen_put(FIELD_RIGHT, 0u, '+');
-    screen_put(0u, 23u, '+');
-    screen_put(FIELD_RIGHT, 23u, '+');
+    screen_put(0u, 0u, '{');
+    screen_put(FIELD_RIGHT, 0u, '}');
+    screen_put(0u, 23u, '[');
+    screen_put(FIELD_RIGHT, 23u, ']');
     for (y = 1u; y < 23u; ++y) {
         screen_put(0u, y, '|');
         screen_put(FIELD_RIGHT, y, '|');
     }
     memset(previous_cells, 0xff, sizeof(previous_cells));
-}
-
-static unsigned char pair_attribute(unsigned char y, unsigned char pair)
-{
-    unsigned char screen_x;
-    unsigned char i;
-    unsigned char value;
-    unsigned char best;
-
-    if (y == 0u || y == 23u)
-        return ATTR(ZX_CYAN, ZX_BLACK);
-
-    best = 0u;
-    for (i = 0u; i < 2u; ++i) {
-        screen_x = (unsigned char)(pair * 2u + i);
-        if (screen_x == 0u || screen_x == FIELD_RIGHT) {
-            if (best < 1u)
-                best = 1u;
-        } else if (screen_x >= FIELD_LEFT && screen_x < FIELD_RIGHT) {
-            value = render_cells[(unsigned char)(y - 1u)]
-                                [(unsigned char)(screen_x - FIELD_LEFT)];
-            if (value == '@')
-                best = 4u;
-            else if (value == '+' && best < 3u)
-                best = 3u;
-            else if (value == '*' && best < 2u)
-                best = 2u;
-        }
-    }
-
-    if (best == 4u)
-        return ATTR(ZX_YELLOW, ZX_BLACK);
-    if (best == 3u)
-        return ATTR(ZX_RED, ZX_BLACK);
-    if (best == 2u)
-        return ATTR(ZX_WHITE, ZX_BLACK);
-    if (best == 1u)
-        return ATTR(ZX_CYAN, ZX_BLACK);
-    return ATTR(ZX_GREEN, ZX_BLACK);
 }
 
 static void draw_status(void)
@@ -310,8 +429,8 @@ static void draw_status(void)
 
     for (x = 1u; x < FIELD_RIGHT; ++x)
         screen_put(x, 0u, '-');
-    screen_put(0u, 0u, '+');
-    screen_put(FIELD_RIGHT, 0u, '+');
+    screen_put(0u, 0u, '{');
+    screen_put(FIELD_RIGHT, 0u, '}');
     screen_text(2u, 0u, "ROBOTS");
     screen_text(9u, 0u, "L");
     screen_number(10u, 0u, (unsigned long)game.level, 3u);
@@ -331,7 +450,6 @@ static void render_board(void)
 {
     unsigned char x;
     unsigned char y;
-    unsigned char pair;
 
     if (game.score > high_score)
         high_score = game.score;
@@ -345,25 +463,20 @@ static void render_board(void)
     for (y = 0u; y < ROBOTS_GAME_HEIGHT; ++y) {
         for (x = 0u; x < ROBOTS_GAME_WIDTH; ++x) {
             if (previous_cells[y][x] != render_cells[y][x]) {
-                screen_put((unsigned char)(x + FIELD_LEFT),
-                           (unsigned char)(y + 1u), render_cells[y][x]);
+                screen_put_object((unsigned char)(x + FIELD_LEFT),
+                                  (unsigned char)(y + 1u),
+                                  render_cells[y][x]);
                 previous_cells[y][x] = render_cells[y][x];
             }
         }
     }
-
-    for (y = 0u; y < SCREEN_ROWS; ++y) {
-        for (pair = 0u; pair < 31u; ++pair)
-            ZX_ATTR_BASE[(unsigned int)y * 32u + pair] =
-                pair_attribute(y, pair);
-    }
-    ZX_ATTR_BASE[31u] = ATTR(ZX_RED, ZX_BLACK);
+    present_screen();
 }
 
 static void show_notice(unsigned char value)
 {
     screen_put(NOTICE_COLUMN, 0u, value);
-    ZX_ATTR_BASE[31u] = ATTR(ZX_RED, ZX_BLACK);
+    present_screen();
 }
 
 static void modal_box(const char *title, const char *line1,
@@ -377,16 +490,15 @@ static void modal_box(const char *title, const char *line1,
         for (x = 10u; x < 54u; ++x)
             screen_put(x, y, ' ');
         screen_put(54u, y, '|');
-        set_attribute_span(y, 9u, 54u, ATTR(ZX_YELLOW, ZX_BLUE));
     }
     for (x = 9u; x <= 54u; ++x) {
         screen_put(x, 7u, '-');
         screen_put(x, 16u, '-');
     }
-    screen_put(9u, 7u, '+');
-    screen_put(54u, 7u, '+');
-    screen_put(9u, 16u, '+');
-    screen_put(54u, 16u, '+');
+    screen_put(9u, 7u, '{');
+    screen_put(54u, 7u, '}');
+    screen_put(9u, 16u, '[');
+    screen_put(54u, 16u, ']');
     screen_text(12u, 9u, title);
     screen_text(12u, 11u, line1);
     screen_text(12u, 12u, line2);
@@ -399,6 +511,7 @@ static unsigned char confirm_quit(void)
 
     modal_box("QUIT GAME?", "Y  RETURN TO BASIC", "N  KEEP PLAYING",
               "PRESS Y OR N");
+    present_screen();
     do {
         key = read_key();
     } while (key != 'y' && key != 'Y' && key != 'n' && key != 'N');
@@ -427,6 +540,7 @@ static void show_level_clear(void)
         screen_number(40u, 12u,
                       (unsigned long)game.last_wait_bonus, 2u);
     }
+    present_screen();
     read_key();
     robots_game_next_level(&game);
     board_visible = 0u;
@@ -442,6 +556,7 @@ static unsigned char show_game_over(void)
     modal_box("AARRRRGGHHH... GAME OVER", "FINAL SCORE",
               "R  PLAY AGAIN", "Q  RETURN TO BASIC");
     screen_number(29u, 11u, game.score, 6u);
+    present_screen();
     do {
         key = read_key();
     } while (key != 'r' && key != 'R' && key != 'q' && key != 'Q');
@@ -569,6 +684,7 @@ int main(void)
 
     z80_outp(0xfeu, ZX_BLACK);
     high_score = 0ul;
+    glyph_style = ROBOTS_GLYPH_STYLE_ROBOT;
 
     for (;;) {
         show_title();
@@ -580,8 +696,8 @@ int main(void)
     }
 
     clear_screen();
-    fill_attributes(ATTR(ZX_CYAN, ZX_BLACK));
     screen_center(10u, "THANKS FOR PLAYING ROBOTS");
     screen_center(12u, "RANDOMIZE USR TO PLAY AGAIN");
+    present_screen();
     return 0;
 }

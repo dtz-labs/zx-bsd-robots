@@ -31,6 +31,13 @@ FONT_BYTES = FONT_GLYPHS * FONT_SCANLINES
 # Keep UI wording in one place: these are deliberately cheap to update when
 # the native screens change their copy.
 TITLE_FRAGMENT = "ROBOTS"
+TITLE_GLYPH_ROBOT_FRAGMENT = "G: GLYPHS [ROBOT]"
+TITLE_GLYPH_ATARI_FRAGMENT = "G: GLYPHS [ATARI]"
+TITLE_GLYPH_C64_FRAGMENT = "G: GLYPHS [C64]"
+TITLE_GLYPH_BSD_FRAGMENT = "G: GLYPHS [BSD]"
+TITLE_LICENSE_FRAGMENT = "L: BSD LICENSE"
+LICENSE_PAGE_1_FRAGMENT = "BSD LICENSE 1/2"
+LICENSE_PAGE_2_FRAGMENT = "BSD LICENSE 2/2"
 BOARD_HEADER_FRAGMENT = "ROBOTS"
 HELP_FRAGMENT = "HOW TO PLAY"
 QUIT_FRAGMENT = "QUIT"
@@ -210,12 +217,12 @@ def has_board_frame(rows: tuple[str, ...]) -> bool:
     bottom = rows[-1]
     has_horizontal_edges = (
         len(top) > frame_right
-        and top[0] == "+"
-        and top[frame_right] == "+"
+        and top[0] == "{"
+        and top[frame_right] == "}"
         and len(bottom) > frame_right
-        and bottom[0] == "+"
-        and bottom[frame_right] == "+"
-        and sum(character in "-=#_" for character in bottom) >= 40
+        and bottom[0] == "["
+        and bottom[frame_right] == "]"
+        and bottom[1:frame_right].count("-") >= 55
     )
     vertical_rows = sum(
         len(row) > frame_right and row[0] == "|" and row[frame_right] == "|"
@@ -231,13 +238,27 @@ def has_board_frame(rows: tuple[str, ...]) -> bool:
 def is_board(rows: tuple[str, ...]) -> bool:
     text = visible_text(rows)
     has_player = "@" in text
-    has_robot_or_heap = "+" in text or "*" in text
     return (
         has_fragment(rows, BOARD_HEADER_FRAGMENT)
         and has_board_frame(rows)
         and has_player
-        and has_robot_or_heap
     )
+
+
+def assert_white_on_black(attributes: bytes, description: str) -> None:
+    if len(attributes) != SCREEN_ATTRIBUTE_BYTES:
+        raise AssertionError(
+            f"{description}: expected {SCREEN_ATTRIBUTE_BYTES} attributes, "
+            f"got {len(attributes)}"
+        )
+
+    for index, attribute in enumerate(attributes):
+        if attribute != 0x47:
+            row, column = divmod(index, 32)
+            raise AssertionError(
+                f"{description}: expected bright-white ink on black paper "
+                f"at ({column}, {row}), got attribute 0x{attribute:02x}"
+            )
 
 
 def format_screen(rows: tuple[str, ...]) -> str:
@@ -360,50 +381,134 @@ def main() -> int:
     try:
         connection = connect(port)
 
-        wait_for_screen(
+        _, _, title_attributes = wait_for_screen(
             connection,
             font_address,
-            f"boot/title containing {TITLE_FRAGMENT!r}",
-            lambda rows: has_fragment(rows, TITLE_FRAGMENT),
+            f"boot/title containing {TITLE_GLYPH_ROBOT_FRAGMENT!r}",
+            lambda rows: (
+                has_fragment(rows, TITLE_FRAGMENT)
+                and has_fragment(rows, TITLE_GLYPH_ROBOT_FRAGMENT)
+                and has_fragment(rows, TITLE_LICENSE_FRAGMENT)
+            ),
             timeout=STARTUP_TIMEOUT_SECONDS,
             stable_for=SCREEN_STABLE_SECONDS,
         )
+        assert_white_on_black(title_attributes, "title screen")
 
-        send_ascii(connection, " ")
-        board_rows, _, _ = wait_for_screen(
+        send_ascii(connection, "g")
+        _, _, atari_attributes = wait_for_screen(
             connection,
             font_address,
-            "game board with header, frame, player, and robots",
+            f"title containing {TITLE_GLYPH_ATARI_FRAGMENT!r}",
+            lambda rows: has_fragment(rows, TITLE_GLYPH_ATARI_FRAGMENT),
+            stable_for=SCREEN_STABLE_SECONDS,
+        )
+        assert_white_on_black(atari_attributes, "ATARI glyph title screen")
+
+        send_ascii(connection, "g")
+        _, _, c64_attributes = wait_for_screen(
+            connection,
+            font_address,
+            f"title containing {TITLE_GLYPH_C64_FRAGMENT!r}",
+            lambda rows: has_fragment(rows, TITLE_GLYPH_C64_FRAGMENT),
+            stable_for=SCREEN_STABLE_SECONDS,
+        )
+        assert_white_on_black(c64_attributes, "C64 glyph title screen")
+
+        send_ascii(connection, "g")
+        _, _, bsd_attributes = wait_for_screen(
+            connection,
+            font_address,
+            f"title containing {TITLE_GLYPH_BSD_FRAGMENT!r}",
+            lambda rows: has_fragment(rows, TITLE_GLYPH_BSD_FRAGMENT),
+            stable_for=SCREEN_STABLE_SECONDS,
+        )
+        assert_white_on_black(bsd_attributes, "BSD glyph title screen")
+
+        send_ascii(connection, "l")
+        _, _, license_1_attributes = wait_for_screen(
+            connection,
+            font_address,
+            f"license screen containing {LICENSE_PAGE_1_FRAGMENT!r}",
+            lambda rows: has_fragment(rows, LICENSE_PAGE_1_FRAGMENT),
+            stable_for=SCREEN_STABLE_SECONDS,
+        )
+        assert_white_on_black(license_1_attributes, "BSD license page 1")
+
+        send_ascii(connection, " ")
+        _, _, license_2_attributes = wait_for_screen(
+            connection,
+            font_address,
+            f"license screen containing {LICENSE_PAGE_2_FRAGMENT!r}",
+            lambda rows: has_fragment(rows, LICENSE_PAGE_2_FRAGMENT),
+            stable_for=SCREEN_STABLE_SECONDS,
+        )
+        assert_white_on_black(license_2_attributes, "BSD license page 2")
+
+        send_ascii(connection, "p")
+        _, _, license_1_again_attributes = wait_for_screen(
+            connection,
+            font_address,
+            "BSD license page 1 after going back",
+            lambda rows: has_fragment(rows, LICENSE_PAGE_1_FRAGMENT),
+            stable_for=SCREEN_STABLE_SECONDS,
+        )
+        assert_white_on_black(
+            license_1_again_attributes, "BSD license page 1 revisit"
+        )
+
+        send_ascii(connection, "q")
+        _, _, returned_title_attributes = wait_for_screen(
+            connection,
+            font_address,
+            "title after closing the BSD license",
+            lambda rows: (
+                has_fragment(rows, TITLE_GLYPH_BSD_FRAGMENT)
+                and has_fragment(rows, TITLE_LICENSE_FRAGMENT)
+            ),
+            stable_for=SCREEN_STABLE_SECONDS,
+        )
+        assert_white_on_black(returned_title_attributes, "returned title screen")
+
+        send_ascii(connection, " ")
+        board_rows, _, board_attributes = wait_for_screen(
+            connection,
+            font_address,
+            "game board with header, proper frame corners, and player",
             is_board,
             stable_for=SCREEN_STABLE_SECONDS,
         )
+        assert_white_on_black(board_attributes, "game board")
 
         send_ascii(connection, "i")
-        wait_for_screen(
+        _, _, help_attributes = wait_for_screen(
             connection,
             font_address,
             f"help screen containing {HELP_FRAGMENT!r}",
             lambda rows: has_fragment(rows, HELP_FRAGMENT),
             stable_for=SCREEN_STABLE_SECONDS,
         )
+        assert_white_on_black(help_attributes, "help screen")
 
         send_ascii(connection, " ")
-        wait_for_screen(
+        _, _, returned_board_attributes = wait_for_screen(
             connection,
             font_address,
             "game board after closing help",
             is_board,
             stable_for=SCREEN_STABLE_SECONDS,
         )
+        assert_white_on_black(returned_board_attributes, "game board after help")
 
         send_ascii(connection, "q")
-        quit_rows, _, _ = wait_for_screen(
+        quit_rows, _, quit_attributes = wait_for_screen(
             connection,
             font_address,
             f"changed quit modal containing {QUIT_FRAGMENT!r}",
             lambda rows: rows != board_rows and has_fragment(rows, QUIT_FRAGMENT),
             stable_for=SCREEN_STABLE_SECONDS,
         )
+        assert_white_on_black(quit_attributes, "quit modal")
 
         send_ascii(connection, "n")
         _, bitmap, attributes = wait_for_screen(
@@ -413,13 +518,16 @@ def main() -> int:
             lambda rows: rows != quit_rows and is_board(rows),
             stable_for=SCREEN_STABLE_SECONDS,
         )
+        assert_white_on_black(attributes, "game board after declining quit")
 
         if args.screenshot is not None:
             save_ppm(args.screenshot.resolve(), bitmap, attributes)
 
         print(
-            "ZEsarUX 48K smoke OK: title, game board, 4x8 font decode, "
-            "help, quit cancellation, and return to play"
+            "ZEsarUX 48K smoke OK: glyph selection, two-page BSD license, "
+            "white-on-black UI, game board, frame corners, help, "
+            "quit cancellation, "
+            "and return to play"
         )
         if args.screenshot is not None:
             print(f"screenshot: {args.screenshot.resolve()}")

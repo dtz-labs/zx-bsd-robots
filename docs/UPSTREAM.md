@@ -19,7 +19,8 @@ the BSD game `robots`. The behavioural reference is NetBSD release 10:
 
 The original files carry a 3-clause BSD licence from the Regents of the
 University of California. The notice, conditions, and disclaimer are retained
-in the repository `LICENSE` and copied alongside the release TAP.
+in the repository `LICENSE`, copied alongside the release TAP, and available
+in full through the two-page viewer opened with `L` on the title screen.
 
 ## Deliberate Spectrum differences
 
@@ -32,5 +33,10 @@ in the repository `LICENSE` and copied alongside the release TAP.
   omitted; every Spectrum game starts at field 1.
 - Redraw, terminal-size checks, real-time mode, and autobot mode are platform
   concerns that do not apply to this turn-based Spectrum build.
-- The original ASCII identities remain, but the custom 4×8 glyphs give the
-  three game marks a small pixel-art treatment and Spectrum colours.
+- The logical game identities remain `@`, `+`, and `*`. The `@` player and `*`
+  heap keep fixed pixel-art glyphs; title-only `G` changes the robot rendering
+  between the port's `ROBOT`, playful `ATARI` and `C64` interpretations, and
+  `BSD`, the historical plus sign. This presentation choice does not change
+  rules or the logical board state.
+- The frame uses dedicated corner glyphs rather than reusing `+`, and the whole
+  interface uses bright-white ink on black paper.
