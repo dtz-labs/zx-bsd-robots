@@ -18,6 +18,7 @@
         <a href="#player">--play</a>
         <a href="#downloads">--download</a>
         <a href="#controls">--keys</a>
+        <a href="https://buymeacoffee.com/mpasternak">--coffee</a>
         <a href="https://github.com/dtz-labs/zx-bsd-robots">--source</a>
       </nav>
       <span class="terminal-nav__caret" aria-hidden="true">&#9608;</span>
@@ -35,18 +36,32 @@
       <div class="intro__aside">
         <p>Two machine-native editions. The standard game runs on a 48K
           Spectrum; the Timex build uses the SCLD’s real 512&times;192 hi-res mode.</p>
-        <a class="sponsor-link" href="https://buymeacoffee.com/mpasternak">Buy me a coffee</a>
       </div>
     </section>
 
     <section class="workbench" id="player" aria-labelledby="player-title">
       <div class="workbench__panel">
         <h2 id="player-title">Play in the browser</h2>
-        <p>Press the play button, then click the display before using the
-          keyboard. The browser player runs the Spectrum 48K edition; the Timex
-          hi-res TAP remains available as a direct download below.</p>
+        <p>Choose an edition, press the play button, then click the display
+          before using the keyboard.</p>
 
-        <p class="machine-note">Spectrum 48K · 4×8 font · red player</p>
+        <fieldset class="machine-picker" id="machine-picker" aria-describedby="machine-picker-hint">
+          <legend>Machine</legend>
+          <div class="machine-picker__options">
+            <label>
+              <input type="radio" name="machine" value="spectrum" checked>
+              <span>Spectrum 48K</span>
+            </label>
+            <label>
+              <input type="radio" name="machine" value="timex">
+              <span>Timex TC2048 · 512×192</span>
+            </label>
+          </div>
+        </fieldset>
+        <p class="machine-picker__hint" id="machine-picker-hint">Changing editions restarts the emulator and loses current progress.</p>
+
+        <p class="machine-note" id="machine-note">Spectrum 48K · 4×8 font · red player</p>
+        <a class="robots-coffee" href="https://buymeacoffee.com/mpasternak">☕ Buy me a coffee</a>
         <p class="emulator-status" id="emulator-status" role="status" aria-live="polite">Starting JSSpeccy3…</p>
       </div>
 
@@ -129,39 +144,119 @@
       "use strict";
 
       var status = document.getElementById("emulator-status");
+      var host = document.getElementById("jsspeccy");
+      var machinePicker = document.getElementById("machine-picker");
+      var machineNote = document.getElementById("machine-note");
+      var machineInputs = machinePicker.querySelectorAll("input[name='machine']");
       var zoom = window.innerWidth >= 720 ? 2 : 1;
-
-      try {
-        var emulator = JSSpeccy(document.getElementById("jsspeccy"), {
+      var emulator = null;
+      var startSequence = 0;
+      var readyTimer = null;
+      var machines = {
+        spectrum: {
           machine: 48,
-          openUrl: "zx-bsd-robots-48k.tap",
-          autoLoadTapes: true,
-          joystickEnabled: false,
-          joystickType: "none",
-          zoom: zoom
-        });
+          tap: "zx-bsd-robots-48k.tap",
+          label: "Spectrum 48K",
+          note: "Spectrum 48K · 4×8 font · red player"
+        },
+        timex: {
+          machine: 2048,
+          tap: "zx-bsd-robots-timex-512.tap",
+          label: "Timex TC2048",
+          note: "Timex TC2048 · 512×192 hi-res · four enemy themes"
+        }
+      };
 
-        emulator.onReady(function () {
-          status.textContent = "Spectrum 48K is ready. Press play in the emulator.";
-          status.dataset.state = "success";
-        });
+      function setPickerBusy(isBusy) {
+        machinePicker.setAttribute("aria-busy", isBusy ? "true" : "false");
+      }
 
-        window.addEventListener("resize", function () {
-          var responsiveZoom;
-
-          if (document.fullscreenElement) {
-            return;
-          }
-          responsiveZoom = window.innerWidth >= 720 ? 2 : 1;
-          if (responsiveZoom !== zoom) {
-            zoom = responsiveZoom;
-            emulator.setZoom(zoom);
-          }
-        });
-      } catch (error) {
+      function showError() {
         status.textContent = "The emulator could not start. Download the TAP below and use a local emulator.";
         status.dataset.state = "error";
+        setPickerBusy(false);
       }
+
+      function startMachine(machineKey) {
+        var config = machines[machineKey];
+        var instance;
+        var previousEmulator;
+        var sequence;
+
+        if (!config) {
+          return;
+        }
+
+        startSequence += 1;
+        sequence = startSequence;
+        window.clearTimeout(readyTimer);
+        setPickerBusy(true);
+        machineNote.textContent = config.note;
+        status.textContent = "Starting " + config.label + "…";
+        status.dataset.state = "loading";
+
+        try {
+          previousEmulator = emulator;
+          emulator = null;
+          if (previousEmulator && typeof previousEmulator.exit === "function") {
+            previousEmulator.exit();
+          }
+          host.textContent = "";
+
+          instance = JSSpeccy(host, {
+            machine: config.machine,
+            openUrl: config.tap,
+            autoLoadTapes: true,
+            joystickEnabled: false,
+            joystickType: "none",
+            zoom: zoom
+          });
+          emulator = instance;
+
+          instance.onReady(function () {
+            if (sequence !== startSequence || instance !== emulator) {
+              return;
+            }
+            window.clearTimeout(readyTimer);
+            status.textContent = config.label + " is initialized. The tape is loading; press play in the emulator.";
+            status.dataset.state = "success";
+            setPickerBusy(false);
+          });
+
+          readyTimer = window.setTimeout(function () {
+            if (sequence === startSequence && instance === emulator) {
+              showError();
+            }
+          }, 15000);
+        } catch (error) {
+          showError();
+        }
+      }
+
+      Array.prototype.forEach.call(machineInputs, function (input) {
+        input.addEventListener("change", function () {
+          if (input.checked) {
+            startMachine(input.value);
+          }
+        });
+      });
+
+      startMachine("spectrum");
+
+      window.addEventListener("resize", function () {
+        var responsiveZoom;
+
+        if (document.fullscreenElement) {
+          return;
+        }
+        responsiveZoom = window.innerWidth >= 720 ? 2 : 1;
+        if (responsiveZoom !== zoom) {
+          zoom = responsiveZoom;
+          if (emulator) {
+            emulator.setZoom(zoom);
+          }
+        }
+      });
     }());
   </script>
 </body>

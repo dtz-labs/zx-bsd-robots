@@ -14,6 +14,11 @@ The TAP files are built by GitHub Actions and attached individually to
 [GitHub Releases](https://github.com/dtz-labs/zx-bsd-robots/releases). They are
 not committed to the repository and are not wrapped in ZIP archives.
 
+The browser player can switch between the Spectrum 48K and Timex TC2048
+editions without leaving the page. Its TC2048 mode uses a byte-identical copy
+of the permitted Spectrum 48K ROM under the filename expected by JSSpeccy3;
+no Timex-authored ROM image is published.
+
 You have no weapon. Every robot takes one step towards you after each turn, so
 survival means making the machines collide with one another or with the junk
 heaps left by earlier collisions. Teleportation is unlimited, random, and not

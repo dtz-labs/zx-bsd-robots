@@ -38,7 +38,12 @@ Browser emulator
 GitHub Pages uses JSSpeccy3 v3.2.0-timex.2, licensed under GPL-3.0:
 https://github.com/dtz-labs/jsspeccy3/tree/v3.2.0-timex.2
 
-The deployed browser player includes only the Spectrum 48K ROM and tape
-loader from that distribution. The Timex ROM is deliberately not copied to
-the Pages artifact; the Timex game remains available as a downloadable TAP.
-JSSpeccy3's COPYING file and ROM licence notes are linked from the page.
+The deployed browser player does not include the Timex-authored TC2048 ROM.
+For TC2048 mode it uses a second, byte-identical copy of the permitted
+Spectrum 48K ROM, stored as roms/tc2048.rom because that is the filename
+required by JSSpeccy3's machine routing. The emulator's SCLD implementation,
+not that ROM image, provides the 512x192 display mode.
+
+The Pages artifact includes the 48K and TC2048 tape-loader snapshots from the
+pinned JSSpeccy3 distribution. JSSpeccy3's COPYING file and ROM licence notes
+are linked from the page.

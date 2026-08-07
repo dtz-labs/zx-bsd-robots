@@ -3,7 +3,7 @@
     "date": "2026-08-07",
     "macrostructure": "Workbench",
     "theme": "Terminal",
-    "enrichment": "live emulator",
-    "brief": "ZX BSD Robots GitHub Pages player with Spectrum and Timex builds"
+    "enrichment": "dual-machine live emulator",
+    "brief": "ZX BSD Robots GitHub Pages player with switchable Spectrum and Timex builds"
   }
 ]

@@ -34,6 +34,9 @@ jobs:
       - name: Run host unit tests
         run: make test-host
 
+      - name: Test Pages player controller
+        run: node tools/test_pages_player.js
+
       - name: Build both TAPs with pinned z88dk
         run: |
           docker run --rm --user "$(id -u):$(id -g)" \
@@ -75,8 +78,12 @@ jobs:
           cp _emulator/dist/COPYING _site/jsspeccy/COPYING
           cp _emulator/dist/jsspeccy/roms/48.rom \
             _site/jsspeccy/roms/48.rom
+          cp _emulator/dist/jsspeccy/roms/48.rom \
+            _site/jsspeccy/roms/tc2048.rom
           cp _emulator/dist/jsspeccy/tapeloaders/tape_48.szx \
             _site/jsspeccy/tapeloaders/tape_48.szx
+          cp _emulator/dist/jsspeccy/tapeloaders/tape_2048.szx \
+            _site/jsspeccy/tapeloaders/tape_2048.szx
           mkdir -p _site/licenses
           cp LICENSES/Clarified-Artistic.txt \
             _site/licenses/Clarified-Artistic.txt
@@ -100,8 +107,11 @@ jobs:
           test -f _site/licenses/Clarified-Artistic.txt
           test -f _site/licenses/THIRD_PARTY_NOTICES.txt
           test -f _site/jsspeccy/roms/48.rom
+          test -f _site/jsspeccy/roms/tc2048.rom
           test -f _site/jsspeccy/tapeloaders/tape_48.szx
-          test ! -e _site/jsspeccy/roms/tc2048.rom
+          test -f _site/jsspeccy/tapeloaders/tape_2048.szx
+          cmp _site/jsspeccy/roms/48.rom \
+            _site/jsspeccy/roms/tc2048.rom
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
