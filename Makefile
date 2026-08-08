@@ -21,10 +21,11 @@ TIMEX_MAP := $(TIMEX_TARGET).map
 SPECTRUM_SCREENSHOT ?= $(BUILD_DIR)/zx-bsd-robots-48k-smoke.ppm
 TIMEX_SCREENSHOT ?= $(BUILD_DIR)/zx-bsd-robots-timex-512-smoke.ppm
 
-COMMON_SOURCES := src/main.c src/game.c src/controls.c
+COMMON_SOURCES := src/main.c src/game.c src/controls.c src/screen.c
 SPECTRUM_SOURCES := $(COMMON_SOURCES) src/font4x8.c
 TIMEX_SOURCES := $(COMMON_SOURCES) src/font8x8.c src/timex_themes.c
-COMMON_HEADERS := include/robots_game.h include/robots_controls.h
+COMMON_HEADERS := include/robots_game.h include/robots_controls.h \
+	include/robots_screen.h
 SPECTRUM_HEADERS := $(COMMON_HEADERS) include/font4x8.h
 TIMEX_HEADERS := $(COMMON_HEADERS) include/font8x8.h include/timex_themes.h
 
@@ -33,13 +34,15 @@ TEST_CONTROLS_BIN := $(BUILD_DIR)/test-controls
 TEST_FONT4_BIN := $(BUILD_DIR)/test-font4x8
 TEST_FONT8_BIN := $(BUILD_DIR)/test-font8x8
 TEST_TIMEX_THEMES_BIN := $(BUILD_DIR)/test-timex-themes
+TEST_SCREEN_BIN := $(BUILD_DIR)/test-screen
 
 ZCC_FLAGS ?= +zx -vn -SO3 -clib=sdcc_iy -startup=31
 ZCC_FLAGS += -I$(ROOT)/include \
 	-pragma-define:REGISTER_SP=65535 \
 	-pragma-define:CRT_STACK_SIZE=2048
 
-.PHONY: help all spectrum timex test test-host \
+.PHONY: help all spectrum timex test test-host bench bench-spectrum \
+	bench-timex \
 	check-z88dk check-layout check-layout-spectrum check-layout-timex \
 	check-tap check-tap-spectrum check-tap-timex verify \
 	smoke-spectrum smoke-timex run run-spectrum run-timex clean
@@ -56,7 +59,8 @@ help:
 		'  make smoke-timex     Exercise the Timex hi-res UI in ZEsarUX' \
 		'  make run             Launch the Spectrum 48K edition' \
 		'  make run-timex       Launch the Timex TC2048 edition' \
-		'  make verify          Run every automated check and both smokes' \
+		'  make bench           Measure board refresh time in emulated ms' \
+	'  make verify          Run every automated check and both smokes' \
 		'  make clean           Remove generated build files' \
 		'' \
 		'Overrides: Z88DK_HOME=/path/to/z88dk ZESARUX=/path/to/zesarux'
@@ -112,6 +116,11 @@ $(TEST_FONT8_BIN): tests/test_font8x8.c src/font8x8.c include/font8x8.h | $(BUIL
 	$(HOST_CC) -std=c89 -Wall -Wextra -Werror -pedantic \
 		-Iinclude tests/test_font8x8.c src/font8x8.c -o "$@"
 
+$(TEST_SCREEN_BIN): tests/test_screen.c src/screen.c \
+		include/robots_screen.h | $(BUILD_DIR)
+	$(HOST_CC) -std=c89 -Wall -Wextra -Werror -pedantic \
+		-Iinclude tests/test_screen.c src/screen.c -o "$@"
+
 $(TEST_TIMEX_THEMES_BIN): tests/test_timex_themes.c src/timex_themes.c \
 		src/font8x8.c include/timex_themes.h include/font8x8.h | $(BUILD_DIR)
 	$(HOST_CC) -std=c89 -Wall -Wextra -Werror -pedantic \
@@ -120,12 +129,13 @@ $(TEST_TIMEX_THEMES_BIN): tests/test_timex_themes.c src/timex_themes.c \
 
 test-host: $(TEST_GAME_BIN) $(TEST_CONTROLS_BIN) $(TEST_FONT4_BIN) \
 		$(TEST_FONT8_BIN) \
-		$(TEST_TIMEX_THEMES_BIN)
+		$(TEST_TIMEX_THEMES_BIN) $(TEST_SCREEN_BIN)
 	"$(TEST_GAME_BIN)"
 	"$(TEST_CONTROLS_BIN)"
 	"$(TEST_FONT4_BIN)"
 	"$(TEST_FONT8_BIN)"
 	"$(TEST_TIMEX_THEMES_BIN)"
+	"$(TEST_SCREEN_BIN)"
 
 check-layout-spectrum: $(SPECTRUM_TAP)
 	$(PYTHON) tools/check_48k_layout.py "$(SPECTRUM_MAP)"
@@ -154,6 +164,16 @@ smoke-timex: $(TIMEX_TAP)
 	ZESARUX="$(ZESARUX)" $(PYTHON) tools/zesarux_timex_smoke.py \
 		"$(TIMEX_TAP)" --map "$(TIMEX_MAP)" \
 		--screenshot "$(TIMEX_SCREENSHOT)"
+
+bench-spectrum: $(SPECTRUM_TAP)
+	ZESARUX="$(ZESARUX)" $(PYTHON) tools/zesarux_bench.py \
+		"$(SPECTRUM_TAP)" --machine 48k
+
+bench-timex: $(TIMEX_TAP)
+	ZESARUX="$(ZESARUX)" $(PYTHON) tools/zesarux_bench.py \
+		"$(TIMEX_TAP)" --machine TC2048
+
+bench: bench-spectrum bench-timex
 
 verify: test smoke-spectrum smoke-timex
 

@@ -46,22 +46,31 @@ there is no joystick polling or title-screen input selector.
 
 ## Spectrum 256×192 renderer
 
-The Spectrum build implements a direct 64×24, 4×8 renderer. It composes all
-6,144 bitmap bytes and 768 attribute bytes in one global 6,912-byte buffer.
-Presentation copies the attributes to Spectrum RAM first and then copies the
-bitmap. The two transfers are sequential; this is reduced visible redraw, not
-an atomic page flip.
+The Spectrum build implements a direct 64×24, 4×8 renderer that writes into
+display RAM. There is no shadow copy of the screen: a turn changes a handful
+of cells, so composing off-screen meant writing each changed byte twice and
+then blitting all 6,912 bytes to reveal it. What prevents flicker is not a
+buffer but the diff — a cell that did not change is never rewritten.
+
+Each turn is rasterized into a character snapshot, which is compared with the
+previous turn's; only differing cells are plotted. `src/screen.c` turns a
+character position into a display-file offset once per glyph, and the eight
+pixel rows are then reached by stepping 256 bytes, which is the distance the
+ULA's interleaved layout puts between the rows of one cell.
+`tests/test_screen.c` verifies that arithmetic against the plain formula for
+every cell on screen.
+
+The snapshots are one-dimensional. Indexed as `[y][x]` over a 59-wide field
+they forced sdcc to synthesize a multiply on every access, which dominated the
+redraw; a flat array is walked with pointers instead.
 
 Most cells use bright-white ink on black paper. The attribute cell containing
 the player uses bright red on black. Since one Spectrum attribute covers 8×8
 pixels while the font cells are 4×8, the character in the other half of that
-attribute cell necessarily shares the red ink.
+attribute cell necessarily shares the red ink. Moving the player clears one
+attribute and sets one, rather than repainting all 768.
 
-A character snapshot is also compared with the previous field snapshot. Only
-changed field cells are re-rasterized into the off-screen buffer after the
-first frame, while each presentation copies the complete buffer to display
-RAM. The display and character buffers are global so they cannot exhaust the
-Z80 stack.
+The character snapshots are global so they cannot exhaust the Z80 stack.
 
 `src/font4x8.c` contains 96 glyphs (ASCII 32–127), eight bytes each. Its
 printable forms are adapted from Dominic Morris's z88dk

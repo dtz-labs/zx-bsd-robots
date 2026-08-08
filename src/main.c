@@ -10,6 +10,7 @@
 #endif
 #include "robots_controls.h"
 #include "robots_game.h"
+#include "robots_screen.h"
 
 #define SCREEN_COLUMNS 64u
 #define SCREEN_ROWS 24u
@@ -19,19 +20,20 @@
 
 #define SCREEN_BITMAP_BYTES 6144u
 #define SCREEN_ATTRIBUTE_BYTES 768u
+#define SCREEN_BITMAP ((unsigned char *)16384u)
 #ifdef ROBOTS_TIMEX_HIRES
-#define SCREEN_BYTES (SCREEN_BITMAP_BYTES * 2u)
-#define TIMEX_SCREEN_0 ((void *)16384u)
-#define TIMEX_SCREEN_1 ((void *)24576u)
-#define TIMEX_ULA_ATTRIBUTES ((void *)22528u)
+/*
+ * Timex hi-res reads two display files at once: even columns come from the
+ * file at 16384, odd columns from its twin 8192 bytes higher.
+ */
+#define SCREEN_PLANE_STRIDE 8192u
+#define TIMEX_ULA_ATTRIBUTES ((unsigned char *)22528u)
 #define TIMEX_SCLD_PORT 0xffu
 #define TIMEX_HIRES_WHITE_ON_BLACK 0x3eu
 #define TIMEX_ULA_MODE 0x00u
 #define TIMEX_ULA_WHITE_ON_BLACK 0x47u
 #else
-#define SCREEN_BYTES (SCREEN_BITMAP_BYTES + SCREEN_ATTRIBUTE_BYTES)
-#define ZX_BITMAP_BASE ((void *)16384u)
-#define ZX_ATTRIBUTE_BASE ((void *)22528u)
+#define SCREEN_ATTRIBUTES ((unsigned char *)22528u)
 #define ZX_BLACK 0u
 #define ZX_RED 2u
 #define ZX_WHITE 7u
@@ -39,10 +41,15 @@
 
 #define ATTR(ink_, paper_) \
     ((unsigned char)(ZX_BRIGHT | (ink_) | ((paper_) << 3)))
+
+/* No attribute cell is currently painted as the player. */
+#define NO_ATTRIBUTE 0xffffu
 #endif
 
 #define ANIMATION_DELAY_MS 90u
 #define WAIT_DELAY_MS 150u
+
+#define RENDER_CELL_COUNT (ROBOTS_GAME_HEIGHT * ROBOTS_GAME_WIDTH)
 
 static RobotsGame game;
 static unsigned long high_score;
@@ -51,54 +58,54 @@ static unsigned char timex_theme;
 #endif
 
 /*
- * The complete display is composed off-screen.  The Spectrum build stores
- * bitmap plus attributes; Timex hi-res stores its two interleaved display
- * files.  All large buffers are global so they cannot exhaust the Z80 stack.
+ * Glyphs go straight into the display file.  A shadow copy of the screen was
+ * tried first and cost far more than it saved: a turn only ever changes a
+ * handful of cells, so composing off-screen meant writing every changed byte
+ * twice and then blitting all 6144 (48K) or 12288 (Timex) bytes to show it.
+ * What keeps the board from tearing is that untouched cells are never
+ * rewritten at all -- render_board() draws only the difference.
  */
-static unsigned char screen_buffer[SCREEN_BYTES];
-static unsigned char render_cells[ROBOTS_GAME_HEIGHT][ROBOTS_GAME_WIDTH];
-static unsigned char previous_cells[ROBOTS_GAME_HEIGHT][ROBOTS_GAME_WIDTH];
+static unsigned char render_cells[RENDER_CELL_COUNT];
+static unsigned char previous_cells[RENDER_CELL_COUNT];
 static unsigned char board_visible;
-
-static unsigned int bitmap_offset(unsigned char x_byte,
-                                  unsigned char pixel_y)
-{
-    return (unsigned int)(((unsigned int)(pixel_y & 0xc0u) << 5) |
-                          ((unsigned int)(pixel_y & 0x07u) << 8) |
-                          ((unsigned int)(pixel_y & 0x38u) << 2) |
-                          x_byte);
-}
+#ifndef ROBOTS_TIMEX_HIRES
+static unsigned int player_attribute = NO_ATTRIBUTE;
+#endif
 
 static void screen_put_glyph(unsigned char x, unsigned char y,
                              const unsigned char *glyph)
 {
-    unsigned int offset;
-    unsigned char pixel_y;
+    unsigned char *target;
     unsigned char row;
-    unsigned char bits;
 
     if (x >= SCREEN_COLUMNS || y >= SCREEN_ROWS)
         return;
-    pixel_y = (unsigned char)(y * 8u);
-    for (row = 0u; row < 8u; ++row) {
-        offset = bitmap_offset((unsigned char)(x >> 1),
-                               (unsigned char)(pixel_y + row));
-        bits = glyph[row];
+    target = SCREEN_BITMAP + robots_screen_cell_offset(x, y);
 #ifdef ROBOTS_TIMEX_HIRES
-        if ((x & 1u) != 0u)
-            offset = (unsigned int)(offset + SCREEN_BITMAP_BYTES);
-        screen_buffer[offset] = bits;
-#else
-        if ((x & 1u) == 0u)
-            screen_buffer[offset] =
-                (unsigned char)((screen_buffer[offset] & 0x0fu) |
-                                (bits & 0xf0u));
-        else
-            screen_buffer[offset] =
-                (unsigned char)((screen_buffer[offset] & 0xf0u) |
-                                (bits & 0x0fu));
-#endif
+    if ((x & 1u) != 0u)
+        target += SCREEN_PLANE_STRIDE;
+    for (row = 0u; row < 8u; ++row) {
+        *target = glyph[row];
+        target += ROBOTS_SCREEN_ROW_STRIDE;
     }
+#else
+    /*
+     * Two 4x8 characters share one display byte, so each row is a
+     * read-modify-write.  Which nibble to keep is decided once, outside the
+     * loop, rather than on all eight rows.
+     */
+    if ((x & 1u) == 0u) {
+        for (row = 0u; row < 8u; ++row) {
+            *target = (unsigned char)((*target & 0x0fu) | (glyph[row] & 0xf0u));
+            target += ROBOTS_SCREEN_ROW_STRIDE;
+        }
+    } else {
+        for (row = 0u; row < 8u; ++row) {
+            *target = (unsigned char)((*target & 0xf0u) | (glyph[row] & 0x0fu));
+            target += ROBOTS_SCREEN_ROW_STRIDE;
+        }
+    }
+#endif
 }
 
 static void screen_put(unsigned char x, unsigned char y, unsigned char value)
@@ -191,62 +198,47 @@ static void screen_number(unsigned char x, unsigned char y,
 #ifndef ROBOTS_TIMEX_HIRES
 static void fill_attributes(unsigned char attribute)
 {
-    unsigned int i;
-
-    for (i = 0u; i < SCREEN_ATTRIBUTE_BYTES; ++i)
-        screen_buffer[SCREEN_BITMAP_BYTES + i] = attribute;
+    memset(SCREEN_ATTRIBUTES, attribute, SCREEN_ATTRIBUTE_BYTES);
+    /* Whatever cell was red has just been overwritten along with the rest. */
+    player_attribute = NO_ATTRIBUTE;
 }
 
-static void prepare_board_colours(void)
+/*
+ * Only one attribute cell is ever special, so repainting all 768 of them to
+ * move the player's red highlight was pure waste: clear the old cell, set the
+ * new one, and skip the work entirely when the player has not changed cells.
+ */
+static void move_player_colour(void)
 {
-    unsigned int attribute_offset;
-    unsigned char screen_x;
-    unsigned char screen_y;
+    unsigned int offset;
 
-    fill_attributes(ATTR(ZX_WHITE, ZX_BLACK));
-    screen_x = (unsigned char)((unsigned char)game.player.x + FIELD_LEFT);
-    screen_y = (unsigned char)((unsigned char)game.player.y + 1u);
-    attribute_offset = (unsigned int)screen_y * 32u +
-                       (unsigned int)(screen_x >> 1);
-    screen_buffer[SCREEN_BITMAP_BYTES + attribute_offset] =
-        ATTR(ZX_RED, ZX_BLACK);
+    offset = robots_screen_attribute_offset(
+        (unsigned char)((unsigned char)game.player.x + FIELD_LEFT),
+        (unsigned char)((unsigned char)game.player.y + 1u));
+    if (offset == player_attribute)
+        return;
+    if (player_attribute != NO_ATTRIBUTE)
+        SCREEN_ATTRIBUTES[player_attribute] = ATTR(ZX_WHITE, ZX_BLACK);
+    SCREEN_ATTRIBUTES[offset] = ATTR(ZX_RED, ZX_BLACK);
+    player_attribute = offset;
 }
 #endif
 
 static void clear_screen(void)
 {
+    memset(SCREEN_BITMAP, 0, SCREEN_BITMAP_BYTES);
 #ifdef ROBOTS_TIMEX_HIRES
-    memset(screen_buffer, 0, SCREEN_BYTES);
+    memset(SCREEN_BITMAP + SCREEN_PLANE_STRIDE, 0, SCREEN_BITMAP_BYTES);
 #else
-    memset(screen_buffer, 0, SCREEN_BITMAP_BYTES);
     fill_attributes(ATTR(ZX_WHITE, ZX_BLACK));
-#endif
-}
-
-static void present_screen(void)
-{
-#ifdef ROBOTS_TIMEX_HIRES
-    memcpy(TIMEX_SCREEN_0, screen_buffer, SCREEN_BITMAP_BYTES);
-    memcpy(TIMEX_SCREEN_1, &screen_buffer[SCREEN_BITMAP_BYTES],
-           SCREEN_BITMAP_BYTES);
-#else
-    /* Establish black paper before exposing the newly composed bitmap. */
-    memcpy(ZX_ATTRIBUTE_BASE, &screen_buffer[SCREEN_BITMAP_BYTES],
-           SCREEN_ATTRIBUTE_BYTES);
-    memcpy(ZX_BITMAP_BASE, screen_buffer, SCREEN_BITMAP_BYTES);
 #endif
 }
 
 static void blank_live_screen(void)
 {
+    clear_screen();
 #ifdef ROBOTS_TIMEX_HIRES
-    memset(TIMEX_SCREEN_0, 0, SCREEN_BITMAP_BYTES);
-    memset(TIMEX_SCREEN_1, 0, SCREEN_BITMAP_BYTES);
     z80_outp(TIMEX_SCLD_PORT, TIMEX_HIRES_WHITE_ON_BLACK);
-#else
-    memset(ZX_ATTRIBUTE_BASE, ATTR(ZX_WHITE, ZX_BLACK),
-           SCREEN_ATTRIBUTE_BYTES);
-    memset(ZX_BITMAP_BASE, 0, SCREEN_BITMAP_BYTES);
 #endif
 }
 
@@ -254,23 +246,30 @@ static void blank_live_screen(void)
 static void restore_timex_ula(void)
 {
     /* Prepare a valid 256x192 ULA screen before changing display modes. */
-    memset(TIMEX_SCREEN_0, 0, SCREEN_BITMAP_BYTES);
+    memset(SCREEN_BITMAP, 0, SCREEN_BITMAP_BYTES);
     memset(TIMEX_ULA_ATTRIBUTES, TIMEX_ULA_WHITE_ON_BLACK,
            SCREEN_ATTRIBUTE_BYTES);
     z80_outp(TIMEX_SCLD_PORT, TIMEX_ULA_MODE);
 }
 #endif
 
+/*
+ * Debouncing happens before the wait, not after it.  Waiting for the key to
+ * come back up first meant nothing was drawn until the player let go, which
+ * read as lag on top of the redraw; this way the board updates on the press
+ * and the release is absorbed while the finger is already lifting.  One press
+ * still means one turn.
+ */
 static int read_key(void)
 {
     int key;
 
+    in_wait_nokey();
     do {
         key = in_inkey();
         if (key == 0)
             z80_delay_ms(5u);
     } while (key == 0);
-    in_wait_nokey();
     return key;
 }
 
@@ -328,7 +327,6 @@ static void show_license_page(const char **page)
     clear_screen();
     for (y = 0u; y < SCREEN_ROWS; ++y)
         screen_text(1u, y, page[y]);
-    present_screen();
 }
 
 static void show_license(void)
@@ -447,9 +445,8 @@ static void show_title(void)
     screen_text(29u, 19u, "YOU @   HEAP *");
     screen_center(20u, "L: BSD LICENSE");
     screen_center(21u, "PRESS ANY OTHER KEY TO PLAY");
-    screen_center(22u, "ORIGINAL GAME BY KEN ARNOLD");
+    screen_center(22u, "ORIGINAL GAME BY KEN ARNOLD, 1980");
     board_visible = 0u;
-    present_screen();
 }
 
 static void show_help(void)
@@ -480,32 +477,43 @@ static void show_help(void)
     screen_text(2u, 20u, "ALL CONTROLS USE THE SPECTRUM KEYBOARD");
     screen_text(2u, 21u, "W BONUS: +1 FOR EACH ROBOT KILLED, ONLY IF YOU LIVE.");
     screen_center(22u, "PRESS SPACE TO RETURN");
-    present_screen();
     do {
         key = read_key();
     } while (key != ' ' && key != 13);
     board_visible = 0u;
 }
 
+/*
+ * The play field is one flat array, not [y][x].  Its width of 59 is not a
+ * power of two, so every two-dimensional subscript made sdcc synthesise a
+ * multiply; at 1298 cells scanned twice per redraw that alone cost more than
+ * a tenth of a second.  Indices are computed here, for the few dozen objects
+ * that exist, and the scan below walks with plain pointers.
+ */
+static unsigned int cell_index(signed char x, signed char y)
+{
+    return (unsigned int)((unsigned char)y * ROBOTS_GAME_WIDTH) +
+           (unsigned char)x;
+}
+
 static void build_render_cells(void)
 {
-    unsigned char x;
-    unsigned char y;
     unsigned char i;
 
-    for (y = 0u; y < ROBOTS_GAME_HEIGHT; ++y)
-        for (x = 0u; x < ROBOTS_GAME_WIDTH; ++x)
-            render_cells[y][x] = ' ';
-
+    memset(render_cells, ' ', sizeof(render_cells));
     for (i = 0u; i < game.heap_count; ++i)
-        render_cells[(unsigned char)game.heaps[i].y]
-                    [(unsigned char)game.heaps[i].x] = '*';
+        render_cells[cell_index(game.heaps[i].x, game.heaps[i].y)] = '*';
     for (i = 0u; i < game.robot_count; ++i)
-        render_cells[(unsigned char)game.robots[i].y]
-                    [(unsigned char)game.robots[i].x] = '+';
-    render_cells[(unsigned char)game.player.y]
-                [(unsigned char)game.player.x] = '@';
+        render_cells[cell_index(game.robots[i].x, game.robots[i].y)] = '+';
+    render_cells[cell_index(game.player.x, game.player.y)] = '@';
 }
+
+/* Status fields already on screen, so an unchanged one costs nothing. */
+static unsigned int shown_level;
+static unsigned long shown_score;
+static unsigned long shown_high_score;
+static unsigned char shown_robots;
+static unsigned char status_drawn;
 
 static void draw_frame(void)
 {
@@ -525,34 +533,55 @@ static void draw_frame(void)
         screen_put(0u, y, '|');
         screen_put(FIELD_RIGHT, y, '|');
     }
-    memset(previous_cells, 0xff, sizeof(previous_cells));
+
+    /* The labels never change, so they belong with the frame rather than in
+       draw_status(), which used to repaint them on every single redraw. */
+    screen_text(2u, 0u, "ROBOTS");
+    screen_text(9u, 0u, "L");
+    screen_text(14u, 0u, "S");
+    screen_text(22u, 0u, "HI");
+    screen_text(31u, 0u, "R");
+    screen_text(36u, 0u, "I:HELP");
+    screen_text(43u, 0u, "T:TELE");
+    screen_text(50u, 0u, "W:WAIT");
+
+    /*
+     * clear_screen() has just blanked the display, and a blank play field is
+     * one of spaces -- so record it as such.  Marking every cell unknown
+     * instead made the first redraw of a level plot all 1298 cells, some 1200
+     * of them spaces onto already-empty ground.
+     */
+    memset(previous_cells, ' ', sizeof(previous_cells));
+    status_drawn = 0u;
 }
 
 static void draw_status(void)
 {
-    unsigned char x;
-
-    for (x = 1u; x < FIELD_RIGHT; ++x)
-        screen_put(x, 0u, '-');
-    screen_put(0u, 0u, '{');
-    screen_put(FIELD_RIGHT, 0u, '}');
-    screen_text(2u, 0u, "ROBOTS");
-    screen_text(9u, 0u, "L");
-    screen_number(10u, 0u, (unsigned long)game.level, 3u);
-    screen_text(14u, 0u, "S");
-    screen_number(15u, 0u, game.score, 6u);
-    screen_text(22u, 0u, "HI");
-    screen_number(24u, 0u, high_score, 6u);
-    screen_text(31u, 0u, "R");
-    screen_number(32u, 0u, (unsigned long)game.robot_count, 2u);
-    screen_text(36u, 0u, "I:HELP");
-    screen_text(43u, 0u, "T:TELE");
-    screen_text(50u, 0u, "W:WAIT");
+    if (status_drawn == 0u || shown_level != game.level) {
+        screen_number(10u, 0u, (unsigned long)game.level, 3u);
+        shown_level = game.level;
+    }
+    if (status_drawn == 0u || shown_score != game.score) {
+        screen_number(15u, 0u, game.score, 6u);
+        shown_score = game.score;
+    }
+    if (status_drawn == 0u || shown_high_score != high_score) {
+        screen_number(24u, 0u, high_score, 6u);
+        shown_high_score = high_score;
+    }
+    if (status_drawn == 0u || shown_robots != game.robot_count) {
+        screen_number(32u, 0u, (unsigned long)game.robot_count, 2u);
+        shown_robots = game.robot_count;
+    }
+    /* Clears the ! or ? notice left by the previous turn. */
     screen_text(61u, 0u, "   ");
+    status_drawn = 1u;
 }
 
 static void render_board(void)
 {
+    const unsigned char *current;
+    unsigned char *previous;
     unsigned char x;
     unsigned char y;
 
@@ -565,26 +594,27 @@ static void render_board(void)
     }
     draw_status();
 
+    current = render_cells;
+    previous = previous_cells;
     for (y = 0u; y < ROBOTS_GAME_HEIGHT; ++y) {
         for (x = 0u; x < ROBOTS_GAME_WIDTH; ++x) {
-            if (previous_cells[y][x] != render_cells[y][x]) {
+            if (*previous != *current) {
+                *previous = *current;
                 screen_put_object((unsigned char)(x + FIELD_LEFT),
-                                  (unsigned char)(y + 1u),
-                                  render_cells[y][x]);
-                previous_cells[y][x] = render_cells[y][x];
+                                  (unsigned char)(y + 1u), *current);
             }
+            ++previous;
+            ++current;
         }
     }
 #ifndef ROBOTS_TIMEX_HIRES
-    prepare_board_colours();
+    move_player_colour();
 #endif
-    present_screen();
 }
 
 static void show_notice(unsigned char value)
 {
     screen_put(NOTICE_COLUMN, 0u, value);
-    present_screen();
 }
 
 static void modal_box(const char *title, const char *line1,
@@ -622,7 +652,6 @@ static unsigned char confirm_quit(void)
 
     modal_box("QUIT GAME?", "Y  RETURN TO BASIC", "N  KEEP PLAYING",
               "PRESS Y OR N");
-    present_screen();
     do {
         key = read_key();
     } while (key != 'y' && key != 'Y' && key != 'n' && key != 'N');
@@ -651,7 +680,6 @@ static void show_level_clear(void)
         screen_number(40u, 12u,
                       (unsigned long)game.last_wait_bonus, 2u);
     }
-    present_screen();
     read_key();
     robots_game_next_level(&game);
     board_visible = 0u;
@@ -667,7 +695,6 @@ static unsigned char show_game_over(void)
     modal_box("AARRRRGGHHH... GAME OVER", "FINAL SCORE",
               "R  PLAY AGAIN", "Q  RETURN TO BASIC");
     screen_number(29u, 11u, game.score, 6u);
-    present_screen();
     do {
         key = read_key();
     } while (key != 'r' && key != 'R' && key != 'q' && key != 'Q');
@@ -719,20 +746,26 @@ static unsigned char play_game(void)
     unsigned char result;
     RobotsControlAction action;
 
+    /*
+     * The board is drawn once per turn, by whichever branch changed it.  It
+     * used to be redrawn at the top of this loop as well, so every keypress
+     * paid for two full redraws where one was enough.
+     */
+    render_board();
     for (;;) {
-        render_board();
         key = read_key();
         action = robots_control_decode(key, &dx, &dy, &run);
         result = ROBOTS_GAME_RESULT_REJECTED;
 
         if (action == ROBOTS_CONTROL_HELP) {
             show_help();
+            render_board();
             continue;
         }
         if (action == ROBOTS_CONTROL_QUIT) {
             if (confirm_quit() != 0u)
                 return 1u;
-            continue;
+            continue; /* confirm_quit() has already redrawn the board */
         }
         if (action == ROBOTS_CONTROL_TELEPORT) {
             result = robots_game_teleport(&game);
@@ -754,9 +787,10 @@ static unsigned char play_game(void)
             show_notice('?');
         }
 
-        if (result == ROBOTS_GAME_RESULT_CLEARED)
+        if (result == ROBOTS_GAME_RESULT_CLEARED) {
             show_level_clear();
-        else if (result == ROBOTS_GAME_RESULT_DEAD)
+            render_board(); /* the modal invalidated the board; rebuild it */
+        } else if (result == ROBOTS_GAME_RESULT_DEAD)
             return show_game_over();
     }
 }
@@ -786,7 +820,6 @@ int main(void)
     clear_screen();
     screen_center(10u, "THANKS FOR PLAYING ROBOTS");
     screen_center(12u, "RANDOMIZE USR TO PLAY AGAIN");
-    present_screen();
 #endif
     return 0;
 }

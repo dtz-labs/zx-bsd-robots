@@ -39,6 +39,8 @@ TITLE_ORIGINAL_KEYS_FRAGMENT = "Y K U"
 TITLE_NUMERIC_KEYS_FRAGMENT = "7 8 9"
 TITLE_TELEPORT_FRAGMENT = "T TELEPORT"
 TITLE_LICENSE_FRAGMENT = "L: BSD LICENSE"
+# The title credits the original BSD game and the year Ken Arnold wrote it.
+TITLE_CREDIT_FRAGMENT = "KEN ARNOLD, 1980"
 LICENSE_PAGE_1_FRAGMENT = "BSD LICENSE 1/2"
 LICENSE_PAGE_2_FRAGMENT = "BSD LICENSE 2/2"
 BOARD_HEADER_FRAGMENT = "ROBOTS"
@@ -421,6 +423,7 @@ def main() -> int:
                 and has_fragment(rows, TITLE_OBJECT_FRAGMENT)
                 and has_fragment(rows, TITLE_PLAYER_HEAP_FRAGMENT)
                 and has_fragment(rows, TITLE_LICENSE_FRAGMENT)
+                and has_fragment(rows, TITLE_CREDIT_FRAGMENT)
                 and has_fragment(rows, TITLE_KEYBOARD_FRAGMENT)
                 and has_fragment(rows, TITLE_ORIGINAL_KEYS_FRAGMENT)
                 and has_fragment(rows, TITLE_NUMERIC_KEYS_FRAGMENT)
@@ -477,6 +480,7 @@ def main() -> int:
                 has_fragment(rows, TITLE_OBJECT_FRAGMENT)
                 and has_fragment(rows, TITLE_PLAYER_HEAP_FRAGMENT)
                 and has_fragment(rows, TITLE_LICENSE_FRAGMENT)
+                and has_fragment(rows, TITLE_CREDIT_FRAGMENT)
                 and has_fragment(rows, TITLE_KEYBOARD_FRAGMENT)
                 and has_fragment(rows, TITLE_TELEPORT_FRAGMENT)
                 and not has_fragment(rows, "JOYSTICK")

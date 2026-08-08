@@ -91,6 +91,7 @@ make test            # host mechanics + TAP + memory-layout gates
 make smoke-spectrum  # 48K UI smoke in headless ZEsarUX
 make smoke-timex     # 512×192 UI smoke on an emulated TC2048
 make verify          # tests and both emulator smoke tests
+make bench           # measure board refresh time in emulated milliseconds
 make run-spectrum    # launch the 48K edition in ZEsarUX
 make run-timex       # launch the hi-res edition as a TC2048
 make run             # alias for make run-spectrum
@@ -99,11 +100,21 @@ make run             # alias for make run-spectrum
 Defaults point to the sibling z88dk checkout and the standard macOS ZEsarUX
 application. Override `Z88DK_HOME` or `ZESARUX` when they live elsewhere.
 
-Both builds use z88dk `sdcc_iy` with startup 31 and no stdio/CRT terminal. The
-Spectrum renderer composes the complete 6,912-byte display in a global
-off-screen buffer, then copies attributes first and bitmap pixels second. The
-Timex renderer composes its two interleaved 6,144-byte display files. These
-transfers reduce visible redraw, but are not atomic page flips.
+Both builds use z88dk `sdcc_iy` with startup 31 and no stdio/CRT terminal.
+
+Both renderers draw incrementally, straight into the display file. A turn is
+compared against the previous one cell by cell, and only cells that actually
+changed are plotted; untouched cells are never rewritten, which is what keeps
+the board from flickering. Within a character cell the eight pixel rows are
+256 bytes apart, so `src/screen.c` computes one address per glyph and steps it
+— `tests/test_screen.c` checks that arithmetic against the plain ULA formula
+for every cell on screen. On the 48K, the player's red highlight is moved one
+attribute at a time rather than by repainting all 768.
+
+`make bench` measures what this costs, in emulated milliseconds of Z80 work per
+keypress, by sampling the program counter in ZEsarUX against a free-running
+t-state counter. A turn currently costs about 12 ms on the 48K and 6 ms on the
+Timex — under one 20 ms frame either way.
 
 The linker also emits a map. `tools/check_48k_layout.py` verifies the actual
 BSS-to-stack gap; the size of the TAP file alone is not accepted as proof that

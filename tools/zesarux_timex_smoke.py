@@ -34,6 +34,8 @@ FONT_BYTES = FONT_GLYPHS * FONT_SCANLINES
 TITLE_FRAGMENT = "ROBOTS"
 TITLE_TIMEX_FRAGMENT = "TIMEX HI-RES 512X192"
 TITLE_LICENSE_FRAGMENT = "L: BSD LICENSE"
+# The title credits the original BSD game and the year Ken Arnold wrote it.
+TITLE_CREDIT_FRAGMENT = "KEN ARNOLD, 1980"
 TITLE_THEME_ORIGINAL_FRAGMENT = "G: THEME [ORIGINAL +]"
 TITLE_THEME_ROBOT_FRAGMENT = "G: THEME [PIXEL ROBOT]"
 TITLE_THEME_ATARI_FRAGMENT = "G: THEME [ATARI]"
@@ -407,6 +409,7 @@ def main() -> int:
                 has_fragment(rows, TITLE_FRAGMENT)
                 and has_fragment(rows, TITLE_TIMEX_FRAGMENT)
                 and has_fragment(rows, TITLE_LICENSE_FRAGMENT)
+                and has_fragment(rows, TITLE_CREDIT_FRAGMENT)
                 and has_fragment(rows, TITLE_ORIGINAL_KEYS_FRAGMENT)
                 and has_fragment(rows, TITLE_NUMERIC_KEYS_FRAGMENT)
                 and has_fragment(rows, TITLE_TELEPORT_FRAGMENT)
@@ -477,6 +480,7 @@ def main() -> int:
             lambda rows: (
                 has_fragment(rows, TITLE_TIMEX_FRAGMENT)
                 and has_fragment(rows, TITLE_LICENSE_FRAGMENT)
+                and has_fragment(rows, TITLE_CREDIT_FRAGMENT)
                 and has_fragment(rows, TITLE_ORIGINAL_KEYS_FRAGMENT)
                 and has_fragment(rows, TITLE_NUMERIC_KEYS_FRAGMENT)
                 and has_fragment(rows, TITLE_TELEPORT_FRAGMENT)
